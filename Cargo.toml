@@ -1,0 +1,61 @@
+[workspace]
+resolver = "3"
+members = ["xtask", "utils-ui"]
+default-members = [".", "utils-ui"]
+exclude = ["libs"]
+
+# Forks vendored (egui 6d518fc, winit a517b38) — receita no AGENTS.md do local-office.
+[patch.crates-io]
+ecolor = { path = "libs/egui/crates/ecolor/" }
+emath = { path = "libs/egui/crates/emath/" }
+epaint = { path = "libs/egui/crates/epaint/" }
+epaint_default_fonts = { path = "libs/egui/crates/epaint_default_fonts/" }
+egui = { path = "libs/egui/crates/egui/" }
+egui-winit = { path = "libs/egui/crates/egui-winit/" }
+egui-wgpu = { path = "libs/egui/crates/egui-wgpu/" }
+egui_glow = { path = "libs/egui/crates/egui_glow/" }
+egui_extras = { path = "libs/egui/crates/egui_extras/" }
+egui_kittest = { path = "libs/egui/crates/egui_kittest/" }
+egui_system_font_provider = { path = "libs/egui/crates/egui_system_font_provider/" }
+eframe = { path = "libs/egui/crates/eframe/" }
+egui_demo_lib = { path = "libs/egui/crates/egui_demo_lib/" }
+egui_inspection = { path = "libs/egui/crates/egui_inspection/" }
+winit = { path = "libs/winit/" }
+
+[package]
+name = "local-utils"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+repository = "https://github.com/Anon5T4R/Local-Utils"
+description = "Utilitários do cotidiano 100% locais e offline — clipboard na bandeja + ferramentas leves"
+
+[build-dependencies]
+# Embute o ícone no .exe (Windows) — sem isso o Explorer mostra ícone genérico.
+winresource = "0.1"
+
+[dependencies]
+eframe = "0.37"
+egui = "0.37"
+image = "0.25"
+utils-ui = { path = "utils-ui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Atualização: craft_update (libs/craft-libs) — check no GitHub, prompt egui e
+# self-update (Windows: MSI/portable; Linux: AppImage/tar.gz). O `egui` liga o
+# prompt e o Updater de UI.
+craft-update = { path = "libs/craft-libs/crates/update", features = ["egui"] }
+
+[target.'cfg(windows)'.dependencies]
+# Abrir a página da release ("Download" do prompt do updater) — mesmo caminho
+# do local-keys (ShellExecuteW, sem dep extra de shell). 0.62 = a mesma
+# versão que wgpu/gpu-allocator já puxam: única instância de `windows` no
+# grafo (duas quebram o dx12 do wgpu-hal).
+windows = { version = "0.62", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Foundation"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+panic = "abort"

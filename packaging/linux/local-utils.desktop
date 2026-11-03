@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Local Utils
+Exec=local-utils
+Icon=local-utils
+Categories=Utility;
+Comment=Utilitários do cotidiano 100% locais e offline — clipboard na bandeja
+Terminal=false
+StartupWMClass=local-utils

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Local Utils MSI (WiX Toolset v5: `dotnet tool install -g wix`, plus its UI and Util extensions:
+  `wix extension add -g WixToolset.UI.wixext/5.0.2` and the same for WixToolset.Util.wixext).
+  Built by package.ps1:
+
+    wix build local-utils.wxs -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext
+      -d Version=0.1.0 -d BinDir=... -d IconPath=... -d LicenseRtf=... -o out.msi
+
+  Per-machine install into Program Files\Local Utils with a Start Menu shortcut. The installer
+  shows the standard WiX dialogs: welcome + license, progress, and a finish page.
+
+  UpgradeCode and the component GUID below belong to Local Utils alone. Never copy them from (or
+  into) a sibling app of the suite: Windows Installer treats every package sharing an
+  UpgradeCode as one product, so a shared code makes one app's installer refuse to install ("a
+  newer version is already installed") or silently uninstall the other.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+      Name="Local Utils"
+      Manufacturer="Local Utils contributors"
+      Version="$(var.Version)"
+      UpgradeCode="92957659-5DB1-4DF1-AA4B-1C815FF480C0"
+      Scope="perMachine"
+      Compressed="yes"
+      Language="1033">
+    <SummaryInformation Description="Local Utils everyday utilities" Manufacturer="Local Utils contributors" />
+    <!-- Same-version upgrades let successive pre-releases of one X.Y.Z replace each other
+         (MSI versions are numeric, so 1.2.3-rc.1 and 1.2.3-rc.2 are both 1.2.3). -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of Local Utils is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="LocalUtilsIcon.ico" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="LocalUtilsIcon.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Anon5T4R/Local-Utils" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/Anon5T4R/Local-Utils/releases" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Anon5T4R/Local-Utils/issues" />
+
+    <!-- Installer UI: WixUI_Minimal is welcome + license, progress, then a finish page so people
+         can see the install worked. Its dialogs and bitmaps are WiX's own (WixToolset.UI.wixext);
+         package.ps1 builds the license RTF. The finish page offers to launch Local Utils (ticked
+         by default) through WixShellExec (WixToolset.Util.wixext); silent installs (/qn) never
+         show it. -->
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Local Utils" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#LocalUtilsExe]" />
+    <CustomAction Id="LaunchLocalUtils" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixShellExec"
+        Impersonate="yes" Return="ignore" />
+    <UI>
+      <ui:WixUI Id="WixUI_Minimal" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchLocalUtils"
+          Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="Local Utils" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="Local Utils" Level="1">
+      <ComponentGroupRef Id="LocalUtilsFiles" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="LocalUtilsFiles" Directory="INSTALLFOLDER">
+      <Component Id="LocalUtilsApp" Guid="C11E0A1B-065E-43FE-9088-A1964118AE8A">
+        <File Id="LocalUtilsExe" Source="$(var.BinDir)\local-utils.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Local Utils"
+              Description="Local Utils everyday utilities" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
+              Icon="LocalUtilsIcon.ico" IconIndex="0" />
+          <!-- Atalho no desktop (o NSIS antigo criava; per-machine = desktop
+               comum, visível pra todos os usuários). -->
+          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="Local Utils"
+              Description="Local Utils everyday utilities" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
+              Icon="LocalUtilsIcon.ico" IconIndex="0" />
+        </File>
+
+        <RegistryValue Root="HKMU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\local-utils.exe" Value="[#LocalUtilsExe]" Type="string" />
+        <!-- Where this MSI installed the app. The app's own updater (craft_update) reads it
+             (HKLM for a per-machine install) under the suite's key to know this is an MSI
+             install, so it updates with the new MSI rather than the portable zip. -->
+        <RegistryValue Root="HKLM" Key="Software\Anon5T4R\Local Utils" Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>
