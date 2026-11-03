@@ -1,6 +1,7 @@
 //! Janela principal do Local Utils: barra de topo (título, tema/idioma e
-//! check de updates), fileira de abas do roadmap e rodapé de status. As abas
-//! nascem como esqueleto — cada uma ganha conteúdo na sua versão do roadmap.
+//! check de updates), fileira de abas do roadmap e rodapé de status. A aba
+//! Clipboard (a âncora do app) desenha o histórico em `clipboard_ui.rs`; as
+//! demais ainda são esqueleto e ganham conteúdo na sua versão do roadmap.
 
 use std::sync::mpsc::Receiver;
 
@@ -10,6 +11,7 @@ use utils_ui::i18n::{self, Key, Lang};
 use utils_ui::theme;
 
 use crate::clipboard::{self, ClipEvent, DEFAULT_EXCLUDE};
+use crate::clipboard_ui::{self, ClipboardUiState};
 use crate::history;
 
 pub const APP_ID: &str = "local-utils";
@@ -58,9 +60,11 @@ pub struct UtilsApp {
     /// arranque/pedido, prompt egui próprio e self-update em thread própria.
     updater: craft_update::updater::Updater,
     /// Histórico de clipboard (motor em `history.rs`): carregado do disco no
-    /// arranque e regravado a cada cópia nova. A aba ainda é esqueleto — o
-    /// lote 3 desenha a lista em cima disto.
+    /// arranque e regravado a cada cópia nova ou mutação da aba.
     history: history::History,
+    /// Estado da aba Clipboard que sobrevive entre frames (busca, filtro, foco
+    /// de teclado e cache das miniaturas).
+    clip_ui: ClipboardUiState,
     /// Eventos do monitor de clipboard (`None` se o monitor não subiu).
     clip_rx: Option<Receiver<ClipEvent>>,
 }
@@ -90,13 +94,13 @@ impl UtilsApp {
             last_seq: 0,
             updater: craft_update::updater::Updater::new(&craft_update::suite::LOCALUTILS, CURRENT_VERSION),
             history,
+            clip_ui: ClipboardUiState::default(),
             clip_rx,
         }
     }
 
     /// Drena os eventos do monitor e grava o histórico quando entra cópia
-    /// nova. Chamado no início do frame; a gravação é síncrona (o debounce é
-    /// refinamento do lote 3).
+    /// nova. Chamado no início do frame; a gravação é síncrona.
     fn drain_clipboard(&mut self) {
         let mut changed = false;
         while let Some(event) = self.clip_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
@@ -114,17 +118,21 @@ impl UtilsApp {
                         changed = true;
                     }
                 }
-                // Falha do monitor: reporta uma vez e segue (o lote 3 decide
-                // como a UI mostra isso).
+                // Falha do monitor: reporta e segue (o rodapé já mostra o
+                // status; a aba segue utilizável com o que está em memória).
                 ClipEvent::Error(e) => eprintln!("clipboard: {e}"),
             }
         }
         // Sem cópia nova não há o que regravar.
-        if !changed {
-            return;
+        if changed {
+            self.save_history();
         }
-        // Gravação síncrona (o debounce é refinamento do lote 3); erro de
-        // escrita vira status no rodapé em vez de sumir.
+    }
+
+    /// Grava o histórico no disco (tmp + rename). Ponto ÚNICO de gravação: o
+    /// drain do monitor e a aba Clipboard (pin/remover/editar) passam por aqui.
+    /// Erro vira status no rodapé em vez de sumir.
+    fn save_history(&mut self) {
         if let Err(e) = history::save(&history_path(), &self.history) {
             self.status = format!("⚠ {e}");
         }
@@ -199,10 +207,9 @@ impl eframe::App for UtilsApp {
                 if !self.status.is_empty() {
                     ui.label(egui::RichText::new(&self.status).small().weak());
                 }
-                // Contagem do histórico: feedback mínimo enquanto a aba
-                // Clipboard ainda é esqueleto (a lista em si é do lote 3). O
-                // texto vem do catálogo com `{n}` preenchido à mão — plural
-                // real entra quando existir a chave plural no catálogo.
+                // Contagem do histórico no rodapé. O texto vem do catálogo com
+                // `{n}` preenchido à mão — plural real entra quando existir a
+                // chave plural no catálogo.
                 let count = i18n::t(self.cfg.lang, Key::ItemsCount).replace("{n}", &self.history.len().to_string());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(count).small().weak());
@@ -210,6 +217,7 @@ impl eframe::App for UtilsApp {
             });
         });
 
+        let mut outcome = clipboard_ui::Outcome::default();
         egui::CentralPanel::default().show(ui, |ui| {
             // Fileira de abas: `selectable_value` marca a ativa e troca o
             // painel na hora (sem estado extra).
@@ -219,11 +227,30 @@ impl eframe::App for UtilsApp {
                 }
             });
             ui.separator();
-            // Todas as abas ainda são esqueleto: aviso traduzido no centro.
-            ui.centered_and_justified(|ui| {
-                ui.label(egui::RichText::new(i18n::t(self.cfg.lang, Key::TabWip)).weak());
-            });
+            match self.tab {
+                // Clipboard é a âncora: lista virtualizada do histórico.
+                Tab::Clipboard => {
+                    outcome = clipboard_ui::show(ui, self.cfg.lang, &mut self.history, &mut self.clip_ui);
+                }
+                // As demais abas ainda são esqueleto: aviso traduzido no centro.
+                _ => {
+                    let _ = ui.centered_and_justified(|ui| {
+                        ui.label(egui::RichText::new(i18n::t(self.cfg.lang, Key::TabWip)).weak());
+                    });
+                }
+            }
         });
+        // Mutação da aba (pin/remover/editar) → regrava o histórico; a ação
+        // também pode ter deixado uma mensagem pro rodapé.
+        if outcome.changed {
+            self.save_history();
+        }
+        if let Some(status) = outcome.status {
+            self.status = status;
+            // O rodapé já foi desenhado neste frame: sem o pedido de repaint o
+            // "copiado ✓" só apareceria no próximo evento do usuário.
+            ctx.request_repaint();
+        }
 
         // Prompt de update (craft_update): por cima de tudo. "Atualizar e
         // reiniciar" pede o fechamento pelo caminho limpo (ViewportCommand::

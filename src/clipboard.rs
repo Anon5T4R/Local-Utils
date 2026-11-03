@@ -53,8 +53,6 @@ pub fn read_current() -> Option<Entry> {
 /// Repõe a entrada na área de transferência (botão de recopiar). Texto vira
 /// CF_UNICODETEXT, imagem vira CF_BITMAP, arquivos viram CF_HDROP e HTML/RTF
 /// tentam o formato rico registrado.
-// Ainda sem chamador: a UI de recopiar chega no lote 3.
-#[allow(dead_code)]
 pub fn write_back(entry: &Entry) -> Result<(), String> {
     imp::write_back(entry)
 }
@@ -338,8 +336,7 @@ mod imp {
         }
     }
 
-    // Ainda sem chamador: a UI de recopiar chega no lote 3 (ver fachada acima).
-    #[allow(dead_code)]
+    // Chamado pela aba Clipboard (botão/Enter de recopiar).
     pub fn write_back(entry: &Entry) -> Result<(), String> {
         // Uma abertura só pra limpar+gravar (o `_clip` fecha no fim).
         let _clip = Clipboard::new_attempts(10).map_err(|e| format!("abrir o clipboard: {e}"))?;

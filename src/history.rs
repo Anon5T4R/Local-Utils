@@ -170,8 +170,7 @@ impl History {
         }
     }
 
-    /// Remove a entrada (a UI do lote 3 chama no botão de lixeira).
-    #[allow(dead_code)]
+    /// Remove a entrada (o botão de lixeira da aba Clipboard).
     pub fn remove(&mut self, id: u128) {
         if let Some(pos) = self.entries.iter().position(|e| e.id == id) {
             let removed = self.entries.remove(pos);
@@ -182,6 +181,21 @@ impl History {
     /// Da mais recente pra mais antiga.
     pub fn iter(&self) -> impl Iterator<Item = &Entry> {
         self.entries.iter()
+    }
+
+    /// A lista crua, na mesma ordem de `iter` — a UI da lista virtualizada
+    /// trabalha com posições (`show_rows` recebe índices, não referências).
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Troca o texto de uma entrada (edição da aba Clipboard). Devolve `false`
+    /// se o id não existe mais. `ts_ms` e `pinned` ficam: editar não é copiar
+    /// de novo, e um texto editado continua sendo a mesma entrada.
+    pub fn set_text(&mut self, id: u128, text: String) -> bool {
+        let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else { return false };
+        entry.text = Some(text);
+        true
     }
 
     /// A cópia mais recente (atalho da UI/recopiar).

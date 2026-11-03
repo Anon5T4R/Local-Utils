@@ -46,6 +46,10 @@ serde_json = "1"
 # self-update (Windows: MSI/portable; Linux: AppImage/tar.gz). O `egui` liga o
 # prompt e o Updater de UI.
 craft-update = { path = "libs/craft-libs/crates/update", features = ["egui"] }
+# QR do item do clipboard: só a MATRIZ (o app desenha os módulos no painter) —
+# a feature `image` do crate reaproveita o `image 0.25` que já está no grafo,
+# nenhuma crate nova entra por causa disso.
+qrcode = "0.14"
 
 [target.'cfg(windows)'.dependencies]
 # Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e
@@ -58,13 +62,15 @@ clipboard-win = "5.4"
 # Features novas (monitor do clipboard, `clipboard.rs`): DataExchange
 # (AddClipboardFormatListener/GetClipboardSequenceNumber), Threading
 # (OpenProcess/QueryFullProcessImageNameW da exclusão de apps sensíveis),
-# LibraryLoader (GetModuleHandleW da classe da janela) e Graphics_Gdi (o
-# WNDCLASSW só existe com essa feature).
+# LibraryLoader (GetModuleHandleW da classe da janela), Graphics_Gdi (o
+# WNDCLASSW só existe com essa feature) e SystemInformation (GetLocalTime dos
+# carimbos relativos da lista).
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",

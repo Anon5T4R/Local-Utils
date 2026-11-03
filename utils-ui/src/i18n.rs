@@ -60,6 +60,38 @@ pub enum Key {
     TabWip,
     // rodapé: quantas cópias o histórico guarda hoje
     ItemsCount,
+    // aba Clipboard: busca e filtro por tipo
+    Search,
+    FilterAll,
+    FilterText,
+    FilterImages,
+    FilterFiles,
+    FilterRich,
+    // aba Clipboard: ações da entrada
+    CopyAgain,
+    Edit,
+    Save,
+    Cancel,
+    Remove,
+    QRCode,
+    CopiedOk,
+    CopyFailed,
+    Pinned,
+    Unpinned,
+    // aba Clipboard: etiqueta do tipo na linha
+    TypeText,
+    TypeHtml,
+    TypeRtf,
+    TypeImage,
+    TypeFiles,
+    // aba Clipboard: carimbo relativo da entrada
+    TsNow,
+    TsTime,
+    TsYesterday,
+    TsDate,
+    // aba Clipboard: o que impede um QR (texto longo demais / falha ao gerar)
+    QrTooLong,
+    QrFailed,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -80,6 +112,33 @@ const KEYS: &[Key] = &[
     Key::TabScratchpad,
     Key::TabWip,
     Key::ItemsCount,
+    Key::Search,
+    Key::FilterAll,
+    Key::FilterText,
+    Key::FilterImages,
+    Key::FilterFiles,
+    Key::FilterRich,
+    Key::CopyAgain,
+    Key::Edit,
+    Key::Save,
+    Key::Cancel,
+    Key::Remove,
+    Key::QRCode,
+    Key::CopiedOk,
+    Key::CopyFailed,
+    Key::Pinned,
+    Key::Unpinned,
+    Key::TypeText,
+    Key::TypeHtml,
+    Key::TypeRtf,
+    Key::TypeImage,
+    Key::TypeFiles,
+    Key::TsNow,
+    Key::TsTime,
+    Key::TsYesterday,
+    Key::TsDate,
+    Key::QrTooLong,
+    Key::QrFailed,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -104,6 +163,35 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::TabWip => "Under construction",
         // `{n}` é preenchido pelo chamador (contagem do histórico no rodapé).
         Key::ItemsCount => "{n} items",
+        Key::Search => "Search",
+        Key::FilterAll => "All",
+        Key::FilterText => "Text",
+        Key::FilterImages => "Images",
+        Key::FilterFiles => "Files",
+        Key::FilterRich => "Rich",
+        Key::CopyAgain => "Copy again",
+        Key::Edit => "Edit",
+        Key::Save => "Save",
+        Key::Cancel => "Cancel",
+        Key::Remove => "Remove",
+        Key::QRCode => "QR code",
+        Key::CopiedOk => "Copied ✓",
+        Key::CopyFailed => "Could not copy",
+        Key::Pinned => "Pinned",
+        Key::Unpinned => "Unpinned",
+        Key::TypeText => "Plain text",
+        Key::TypeHtml => "HTML",
+        Key::TypeRtf => "RTF",
+        Key::TypeImage => "Image",
+        Key::TypeFiles => "Copied files",
+        Key::TsNow => "now",
+        // `{h}` e `{mm}` são preenchidos pelo chamador (hora local).
+        Key::TsTime => "{h}:{mm}",
+        Key::TsYesterday => "yesterday",
+        // `{d}` e `{month}` são preenchidos pelo chamador (dd/mm).
+        Key::TsDate => "{d}/{month}",
+        Key::QrTooLong => "Text too long for a QR code (~1000 characters)",
+        Key::QrFailed => "Could not generate the QR code",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)

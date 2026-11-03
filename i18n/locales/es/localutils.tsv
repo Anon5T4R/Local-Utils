@@ -11,3 +11,30 @@
 	Scratchpad	Notas
 	Under construction	En construcción
 	{n} items	{n} elementos
+	Search	Buscar
+	All	Todo
+	Text	Texto
+	Images	Imágenes
+	Files	Archivos
+	Rich	Rico
+	Copy again	Volver a copiar
+	Edit	Editar
+	Save	Guardar
+	Cancel	Cancelar
+	Remove	Quitar
+	QR code	Código QR
+	Copied ✓	Copiado ✓
+	Could not copy	No se pudo copiar
+	Pinned	Fijado
+	Unpinned	Desfijado
+	Plain text	Texto plano
+	HTML	HTML
+	RTF	RTF
+	Image	Imagen
+	Copied files	Archivos copiados
+	now	ahora
+	{h}:{mm}	{h}:{mm}
+	yesterday	ayer
+	{d}/{month}	{d}/{month}
+	Text too long for a QR code (~1000 characters)	Texto demasiado largo para el QR (~1000 caracteres)
+	Could not generate the QR code	No se pudo generar el QR

@@ -8,7 +8,9 @@
 
 mod app;
 mod clipboard;
+mod clipboard_ui;
 mod history;
+mod ui;
 
 use eframe::egui;
 use utils_ui::config;
