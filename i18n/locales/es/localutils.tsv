@@ -38,3 +38,6 @@
 	{d}/{month}	{d}/{month}
 	Text too long for a QR code (~1000 characters)	Texto demasiado largo para el QR (~1000 caracteres)
 	Could not generate the QR code	No se pudo generar el QR
+	Nothing copied yet	Nada copiado ainda
+	Nothing found	Nada encontrado
+	{n} item	{n} item

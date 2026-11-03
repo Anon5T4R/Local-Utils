@@ -58,6 +58,9 @@ pub enum Key {
     TabScratchpad,
     // aviso do esqueleto: a aba ainda não tem conteúdo
     TabWip,
+    EmptyList,
+    NoResults,
+    ItemOne,
     // rodapé: quantas cópias o histórico guarda hoje
     ItemsCount,
     // aba Clipboard: busca e filtro por tipo
@@ -111,6 +114,9 @@ const KEYS: &[Key] = &[
     Key::TabTools,
     Key::TabScratchpad,
     Key::TabWip,
+    Key::EmptyList,
+    Key::NoResults,
+    Key::ItemOne,
     Key::ItemsCount,
     Key::Search,
     Key::FilterAll,
@@ -161,6 +167,9 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::TabTools => "Tools",
         Key::TabScratchpad => "Scratchpad",
         Key::TabWip => "Under construction",
+        Key::EmptyList => "Nothing copied yet",
+        Key::NoResults => "Nothing found",
+        Key::ItemOne => "{n} item",
         // `{n}` é preenchido pelo chamador (contagem do histórico no rodapé).
         Key::ItemsCount => "{n} items",
         Key::Search => "Search",

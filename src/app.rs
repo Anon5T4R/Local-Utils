@@ -71,7 +71,18 @@ pub struct UtilsApp {
 
 impl UtilsApp {
     pub fn new(cfg: Config) -> Self {
-        let history = history::load(&history_path());
+        let mut history = history::load(&history_path());
+
+        // O que já está no clipboard quando o app abre entra no histórico
+        // também (o listener só vê cópias a partir do registro — sem isto o
+        // boot nasce "0 itens" mesmo com conteúdo na área de transferência;
+        // pagou no primeiro QA visual).
+        if let Some(entry) = clipboard::read_current() {
+            history.push(entry);
+            if let Err(e) = history::save(&history_path(), &history) {
+                eprintln!("history: {e}");
+            }
+        }
 
         // Monitor em thread própria: só avisa "a área de transferência mudou"
         // (a leitura do conteúdo fica com a UI, ver `clipboard.rs`).
@@ -210,7 +221,10 @@ impl eframe::App for UtilsApp {
                 // Contagem do histórico no rodapé. O texto vem do catálogo com
                 // `{n}` preenchido à mão — plural real entra quando existir a
                 // chave plural no catálogo.
-                let count = i18n::t(self.cfg.lang, Key::ItemsCount).replace("{n}", &self.history.len().to_string());
+                // Singular/plural na mão (sem plumbing de plural do i18n
+                // ainda): 1 item, 2 itens.
+                let key = if self.history.len() == 1 { Key::ItemOne } else { Key::ItemsCount };
+                let count = i18n::t(self.cfg.lang, key).replace("{n}", &self.history.len().to_string());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(count).small().weak());
                 });

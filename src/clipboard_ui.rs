@@ -237,6 +237,14 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         });
         state.scroll_offset = out.state.clamped_offset().y;
         state.view_height = view;
+    } else {
+        // Empty-state: área central morta não ajuda ninguém — o usuário sem
+        // histórico precisa saber o que o app faz, e quem busca sem achar
+        // precisa saber que o filtro é o culpado.
+        let msg = if history.entries().is_empty() { Key::EmptyList } else { Key::NoResults };
+        ui.centered_and_justified(|ui| {
+            ui.label(egui::RichText::new(i18n::t(lang, msg)).weak());
+        });
     }
 
     // ── aplica as ações (fora do desenho) ─────────────────────────────
