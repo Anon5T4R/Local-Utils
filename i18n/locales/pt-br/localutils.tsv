@@ -2,14 +2,14 @@
 	Language	Idioma
 	Theme	Tema
 	Forget key	Esquecer chave
-	Check for updates	Verificar atualizaÃ§Ãµes
+	Check for updates	Verificar atualizações
 	up to date	atualizado
-	Clipboard	Ãrea de transferÃªncia
+	Clipboard	Área de transferência
 	Screenshot	Captura de tela
 	System	Sistema
 	Tools	Ferramentas
 	Scratchpad	Notas
-	Under construction	Em construÃ§Ã£o
+	Under construction	Em construção
 	{n} items	{n} itens
 	Search	Buscar
 	All	Tudo
@@ -22,9 +22,9 @@
 	Save	Salvar
 	Cancel	Cancelar
 	Remove	Remover
-	QR code	CÃ³digo QR
-	Copied âœ“	Copiado âœ“
-	Could not copy	NÃ£o foi possÃ­vel copiar
+	QR code	Código QR
+	Copied ✓	Copiado ✓
+	Could not copy	Não foi possível copiar
 	Pinned	Fixado
 	Unpinned	Desafixado
 	Plain text	Texto puro
@@ -37,7 +37,7 @@
 	yesterday	ontem
 	{d}/{month}	{d}/{month}
 	Text too long for a QR code (~1000 characters)	Texto longo demais para o QR (~1000 caracteres)
-	Could not generate the QR code	NÃ£o foi possÃ­vel gerar o QR
+	Could not generate the QR code	Não foi possível gerar o QR
 	Nothing copied yet	Nada copiado ainda
 	Nothing found	Nada encontrado
 	{n} item	{n} item
