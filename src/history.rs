@@ -24,6 +24,8 @@ pub const MAX_ITEMS_DEFAULT: usize = 500;
 /// …e no máximo 256 MiB de imagens (texto e lista de arquivos não contam).
 pub const MAX_BYTES_DEFAULT: u64 = 256 * 1024 * 1024;
 /// Lado máximo da miniatura (quadrada na maior dimensão) usada pela lista.
+// Só tem chamador no caminho de leitura do Windows (Linux: stub de clipboard).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const THUMB_MAX: u32 = 256;
 
 /// Versão do arquivo salvo. Arquivo de versão desconhecida é ignorado (vira
@@ -257,6 +259,8 @@ impl History {
 
 /// Id único sem depender de RNG: nanos desde a época nos bits altos + contador
 /// do processo nos baixos (duas cópias no mesmo nanossegundo não colidem).
+// Só tem chamador no caminho de leitura do Windows (Linux: stub de clipboard).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn new_id() -> u128 {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
@@ -271,6 +275,8 @@ pub fn now_ms() -> u64 {
 }
 
 /// Encoda RGBA cru em PNG. `None` se o buffer não casar com as dimensões.
+// Só tem chamador no caminho de leitura do Windows (Linux: stub de clipboard).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn encode_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
     let mut png = Vec::new();
     image::codecs::png::PngEncoder::new(&mut png).write_image(rgba, width, height, image::ExtendedColorType::Rgba8).ok()?;
@@ -280,6 +286,8 @@ pub fn encode_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
 /// Miniatura PNG com a maior dimensão em `max` (nunca aumenta a imagem).
 /// Downsampling da própria `image` (box filter do `thumbnail`) — rápido e
 /// suficiente pra lista; a imagem cheia fica em `image_png`.
+// Só tem chamador no caminho de leitura do Windows (Linux: stub de clipboard).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn make_thumb(rgba: &[u8], width: u32, height: u32, max: u32) -> Option<Vec<u8>> {
     let img = image::RgbaImage::from_raw(width, height, rgba.to_vec())?;
     let (tw, th) = thumb_dims(width, height, max.max(1));
@@ -288,6 +296,7 @@ pub fn make_thumb(rgba: &[u8], width: u32, height: u32, max: u32) -> Option<Vec<
 }
 
 /// Proporção da miniatura, arredondada pra cima e nunca abaixo de 1px.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn thumb_dims(width: u32, height: u32, max: u32) -> (u32, u32) {
     if width == 0 || height == 0 {
         return (max, max);

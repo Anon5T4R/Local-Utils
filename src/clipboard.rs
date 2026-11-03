@@ -21,6 +21,9 @@ use std::sync::mpsc::Sender;
 use crate::history::Entry;
 
 /// Evento da thread de monitoramento.
+// No Linux (stub) nenhuma variante é construída — o allow é só pro clippy
+// daquele alvo; no Windows tudo é usado.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Clone, Debug)]
 pub enum ClipEvent {
     /// A área de transferência mudou. `seq` é o número de sequência do
