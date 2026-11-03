@@ -1,6 +1,6 @@
-# Desenha o icone PLACEHOLDER do Local Utils (flat, squircle, gradient navy->#5C8CEB,
-# moldura de foto polaroid com sol e montanhas) e gera icon.ico + icons/icon.png.
-# O motivo é herdado do molde da suíte: ícone próprio vem antes da v0.1.0.
+# Desenha o icone do Local Utils (flat, squircle, gradient slate->indigo,
+# prancheta de clipboard com linhas de conteudo e selo verde de "copiado")
+# e gera icon.ico + icons/icon.png + icons/icon-1024.png.
 Add-Type -AssemblyName System.Drawing
 
 $root = "C:\Dev\underworld-apps\local-utils"
@@ -14,8 +14,7 @@ function New-Canvas([int]$s) {
     return @($bmp, $g)
 }
 
-function Squircle([System.Drawing.Graphics]$g, [float]$s, [float]$r) {
-    # squircle aproximado: rounded rect com raio ~22.4% do lado
+function Squircle([float]$s, [float]$r) {
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
     $path.AddArc(0, 0, $r, $r, 180, 90)
     $path.AddArc($s - $r, 0, $r, $r, 270, 90)
@@ -25,80 +24,90 @@ function Squircle([System.Drawing.Graphics]$g, [float]$s, [float]$r) {
     return $path
 }
 
+function RoundRect([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddArc($x, $y, $r, $r, 180, 90)
+    $path.AddArc($x + $w - $r, $y, $r, $r, 270, 90)
+    $path.AddArc($x + $w - $r, $y + $h - $r, $r, $r, 0, 90)
+    $path.AddArc($x, $y + $h - $r, $r, $r, 90, 90)
+    $path.CloseFigure()
+    return $path
+}
+
+function Capsule([float]$x, [float]$y, [float]$w, [float]$h) {
+    return RoundRect $x $y $w $h ($h / 2)
+}
+
 $bmp, $g = New-Canvas $size
 
-# fundo squircle com gradient linear (navy -> azul do tema)
+# fundo squircle com gradient linear (slate escuro -> indigo do tema)
 $r = $size * 0.224
-$sq = Squircle $g $size $r
+$sq = Squircle $size $r
 $rect = New-Object System.Drawing.Rectangle(0, 0, $size, $size)
 $grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, `
-    [System.Drawing.Color]::FromArgb(255, 38, 56, 92), `
-    [System.Drawing.Color]::FromArgb(255, 92, 140, 235), 60)
+    [System.Drawing.Color]::FromArgb(255, 38, 34, 74), `
+    [System.Drawing.Color]::FromArgb(255, 124, 92, 240), 60)
 $g.FillPath($grad, $sq)
 
-# sombra da moldura (translucida, navy - flat moderno)
-$shadow = New-Object System.Drawing.Drawing2D.GraphicsPath
-$fx = $size * 0.235; $fy = $size * 0.225; $fw = $size * 0.53; $fh = $size * 0.55
-$fr = $size * 0.045
-$shadow.AddArc($fx + 6, $fy + 8, $fr, $fr, 180, 90)
-$shadow.AddArc($fx + $fw - $fr + 6, $fy + 8, $fr, $fr, 270, 90)
-$shadow.AddArc($fx + $fw - $fr + 6, $fy + $fh - $fr + 8, $fr, $fr, 0, 90)
-$shadow.AddArc($fx + 6, $fy + $fh - $fr + 8, $fr, $fr, 90, 90)
-$shadow.CloseFigure()
-$alphaBlack = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(70, 12, 20, 40))
+# sombra da prancheta (translucida, flat moderno) - prancheta grande,
+# pouco fundo roxo em volta (pedido do Joao: "um pouquinho so a menos")
+$bx = 248.0; $by = 240.0; $bw = 528.0; $bh = 584.0; $br = 44.0
+$shadow = RoundRect ($bx + 6) ($by + 10) $bw $bh $br
+$alphaBlack = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(70, 12, 10, 30))
 $g.FillPath($alphaBlack, $shadow)
 $shadow.Dispose()
 
-# moldura polaroid branca
-$frame = New-Object System.Drawing.Drawing2D.GraphicsPath
-$frame.AddArc($fx, $fy, $fr, $fr, 180, 90)
-$frame.AddArc($fx + $fw - $fr, $fy, $fr, $fr, 270, 90)
-$frame.AddArc($fx + $fw - $fr, $fy + $fh - $fr, $fr, $fr, 0, 90)
-$frame.AddArc($fx, $fy + $fh - $fr, $fr, $fr, 90, 90)
-$frame.CloseFigure()
-$g.FillPath([System.Drawing.Brushes]::White, $frame)
+# prancheta branca
+$board = RoundRect $bx $by $bw $bh $br
+$g.FillPath([System.Drawing.Brushes]::White, $board)
 
-# area da foto (dentro da moldura): ciano claro -> azul
-$px = $fx + $fw * 0.09; $py = $fy + $fh * 0.09
-$pw = $fw * 0.82; $ph = $fh * 0.70
-$photo = New-Object System.Drawing.Rectangle([int]$px, [int]$py, [int]$pw, [int]$ph)
-$photoGrad = New-Object System.Drawing.Drawing2D.LinearGradientBrush($photo, `
-    [System.Drawing.Color]::FromArgb(255, 176, 216, 255), `
-    [System.Drawing.Color]::FromArgb(255, 80, 130, 220), 90)
-$g.FillRectangle($photoGrad, $photo)
+# presilha no topo (slate escuro por cima da prancheta)
+$clip = RoundRect 430 200 164 106 36
+$clipBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 58, 54, 92))
+$g.FillPath($clipBrush, $clip)
+# brilho interno da presilha (capsula clara menor)
+$clipInner = Capsule 458 228 108 30
+$clipInnerBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 104, 98, 158))
+$g.FillPath($clipInnerBrush, $clipInner)
 
-# sol (circulo amarelo claro)
-$sunR = $size * 0.055
-$sunX = $px + $pw * 0.68; $sunY = $py + $ph * 0.28
-$sun = New-Object System.Drawing.Drawing2D.GraphicsPath
-$sun.AddEllipse($sunX - $sunR, $sunY - $sunR, $sunR * 2, $sunR * 2)
-$sunBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 255, 221, 60))
-$g.FillPath($sunBrush, $sun)
+# linhas de conteudo (indigo do tema; a ultima em ambar, quente)
+$l1 = Capsule 312 372 316 28
+$lineBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 124, 92, 240))
+$g.FillPath($lineBrush, $l1)
+$l2 = Capsule 312 444 268 28
+$g.FillPath($lineBrush, $l2)
+$l3 = Capsule 312 516 180 28
+$amberBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 255, 185, 68))
+$g.FillPath($amberBrush, $l3)
 
-# montanhas (2 triangulos sobrepostos, azul-escuro e medio)
-$base = $py + $ph
-$mnt1 = New-Object System.Drawing.Drawing2D.GraphicsPath
-$mnt1.AddPolygon([System.Drawing.PointF[]]@(
-    (New-Object System.Drawing.PointF(($px + $pw * 0.02), $base)),
-    (New-Object System.Drawing.PointF(($px + $pw * 0.34), ($base - $ph * 0.52))),
-    (New-Object System.Drawing.PointF(($px + $pw * 0.62), $base))
-))
-$g.FillPath((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(235, 30, 52, 96))), $mnt1)
-$mnt2 = New-Object System.Drawing.Drawing2D.GraphicsPath
-$mnt2.AddPolygon([System.Drawing.PointF[]]@(
-    (New-Object System.Drawing.PointF(($px + $pw * 0.38), $base)),
-    (New-Object System.Drawing.PointF(($px + $pw * 0.66), ($base - $ph * 0.38))),
-    (New-Object System.Drawing.PointF(($px + $pw * 0.98), $base))
-))
-$g.FillPath((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 58, 92, 165))), $mnt2)
-
-# assinatura da marca (estilo da suite: Segoe Script, branco ~55%, no pe do tile)
-$sigFont = New-Object System.Drawing.Font('Segoe Script', [float]($size * 0.082), [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
-$sigBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140, 255, 255, 255))
+# assinatura da marca - easter egg pequeno, estilo dos irmaos da suite
+# (Segoe Script, branco ~47%, discreta no pe do fundo roxo)
+$sigFont = New-Object System.Drawing.Font('Segoe Script', [float]($size * 0.047), [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+$sigBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, 255, 255, 255))
 $sigFormat = New-Object System.Drawing.StringFormat
 $sigFormat.Alignment = [System.Drawing.StringAlignment]::Center
-$g.DrawString('Taylor', $sigFont, $sigBrush, [float]($size / 2), [float]($size * 0.845), $sigFormat)
+$g.DrawString('Taylor', $sigFont, $sigBrush, [float]($size / 2), [float]($size * 0.885), $sigFormat)
 $sigFont.Dispose(); $sigBrush.Dispose(); $sigFormat.Dispose()
+
+# selo verde de "copiado" (circulo + check branco), no canto da prancheta
+$ccx = 692.0; $ccy = 740.0; $ccr = 92.0
+$badge = New-Object System.Drawing.Drawing2D.GraphicsPath
+$badge.AddEllipse($ccx - $ccr, $ccy - $ccr, $ccr * 2, $ccr * 2)
+# aro branco separando o selo da prancheta
+$ring = New-Object System.Drawing.Drawing2D.GraphicsPath
+$ring.AddEllipse($ccx - $ccr - 10, $ccy - $ccr - 10, ($ccr + 10) * 2, ($ccr + 10) * 2)
+$g.FillPath([System.Drawing.Brushes]::White, $ring)
+$badgeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 40, 182, 120))
+$g.FillPath($badgeBrush, $badge)
+$checkPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 30)
+$checkPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+$checkPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+$checkPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+$g.DrawLines($checkPen, [System.Drawing.PointF[]]@(
+    (New-Object System.Drawing.PointF(($ccx - 40), $ccy)),
+    (New-Object System.Drawing.PointF(($ccx - 10), ($ccy + 32))),
+    (New-Object System.Drawing.PointF(($ccx + 44), ($ccy - 34)))
+))
 
 $g.Dispose()
 
