@@ -58,6 +58,8 @@ pub enum Key {
     TabScratchpad,
     // aviso do esqueleto: a aba ainda não tem conteúdo
     TabWip,
+    // rodapé: quantas cópias o histórico guarda hoje
+    ItemsCount,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -77,6 +79,7 @@ const KEYS: &[Key] = &[
     Key::TabTools,
     Key::TabScratchpad,
     Key::TabWip,
+    Key::ItemsCount,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -99,6 +102,8 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::TabTools => "Tools",
         Key::TabScratchpad => "Scratchpad",
         Key::TabWip => "Under construction",
+        // `{n}` é preenchido pelo chamador (contagem do histórico no rodapé).
+        Key::ItemsCount => "{n} items",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)

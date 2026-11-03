@@ -7,6 +7,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod clipboard;
+mod history;
 
 use eframe::egui;
 use utils_ui::config;

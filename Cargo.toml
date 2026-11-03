@@ -48,11 +48,27 @@ serde_json = "1"
 craft-update = { path = "libs/craft-libs/crates/update", features = ["egui"] }
 
 [target.'cfg(windows)'.dependencies]
+# Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e
+# imagem) — mesma crate que o local-keys usa; já vinha no grafo pelo arboard.
+clipboard-win = "5.4"
 # Abrir a página da release ("Download" do prompt do updater) — mesmo caminho
 # do local-keys (ShellExecuteW, sem dep extra de shell). 0.62 = a mesma
 # versão que wgpu/gpu-allocator já puxam: única instância de `windows` no
 # grafo (duas quebram o dx12 do wgpu-hal).
-windows = { version = "0.62", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Foundation"] }
+# Features novas (monitor do clipboard, `clipboard.rs`): DataExchange
+# (AddClipboardFormatListener/GetClipboardSequenceNumber), Threading
+# (OpenProcess/QueryFullProcessImageNameW da exclusão de apps sensíveis),
+# LibraryLoader (GetModuleHandleW da classe da janela) e Graphics_Gdi (o
+# WNDCLASSW só existe com essa feature).
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [profile.release]
 opt-level = 3
