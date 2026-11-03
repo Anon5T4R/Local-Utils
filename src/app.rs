@@ -122,6 +122,8 @@ impl UtilsApp {
 
         // Bandeja + atalho global. Os rótulos do menu saem no idioma do boot
         // (trocar idioma vale no próximo arranque, como tudo que é do SO).
+        // No Linux o handle do ícone não existe (stub) — só o canal importa.
+        #[cfg_attr(not(windows), allow(unused_variables))]
         let (tray_icon, tray_rx) = tray::spawn(tray::Labels {
             tooltip: i18n::t(cfg.lang, Key::AppTitle).to_string(),
             open: i18n::t(cfg.lang, Key::TrayOpen).to_string(),

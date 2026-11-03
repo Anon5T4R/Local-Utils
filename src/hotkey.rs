@@ -13,6 +13,8 @@
 use std::sync::mpsc::Receiver;
 
 /// O que o atalho avisa pro app.
+// No Linux o módulo é stub e nada constrói as variantes — allow daquele alvo.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum HotkeyEvent {
     /// Registrado no SO — nada a mostrar.

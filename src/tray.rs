@@ -11,6 +11,8 @@
 
 /// Comando vindo da bandeja (thread própria → app).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+// No Linux o `spawn` é stub e nada constrói as variantes — allow daquele alvo.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub enum TrayCmd {
     /// Mostrar/focar a janela (clique no ícone ou "Abrir").
     Show,
@@ -142,4 +144,8 @@ mod imp {
     }
 }
 
+// Fora do Windows o `Tray` não existe (stub) — só o `spawn` é reexportado.
+#[cfg(not(windows))]
+pub use imp::spawn;
+#[cfg(windows)]
 pub use imp::{spawn, Tray};
