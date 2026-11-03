@@ -7,18 +7,27 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod autostart;
 mod clipboard;
 mod clipboard_ui;
 mod history;
+mod hotkey;
+mod options;
+mod transfer;
+mod tray;
 mod ui;
+
+#[cfg(windows)]
+mod winctl;
 
 use eframe::egui;
 use utils_ui::config;
 use utils_ui::theme;
 
 /// Ícone da janela (além do .exe cunhado no build.rs — Windows pega os
-/// dois; AppImage/desktop só vendo com o PNG do pacote).
-const ICON_PNG: &[u8] = include_bytes!("../icons/icon.png");
+/// dois; AppImage/desktop só vendo com o PNG do pacote). Também é o ícone da
+/// bandeja (`tray.rs`).
+pub(crate) const ICON_PNG: &[u8] = include_bytes!("../icons/icon.png");
 
 /// Decodifica o PNG do ícone pra `IconData` (o `.with_icon` do egui).
 fn load_icon() -> Option<egui::IconData> {

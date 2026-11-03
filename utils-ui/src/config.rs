@@ -9,15 +9,42 @@ use serde::{Deserialize, Serialize};
 use crate::i18n::Lang;
 use crate::theme::Appearance;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+/// Processos cujo CONTEÚDO nunca entra no histórico: gerenciadores de senha.
+/// Comparação pelo nome do executável, em minúsculas (sem caminho). É a lista
+/// que nasce no primeiro boot; a versão editada nas Opções vai pro config.
+pub const DEFAULT_EXCLUDE: &[&str] = &["local-keys.exe", "localkeys.exe", "keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe"];
+
+/// Atalho global padrão (`win+shift+v`).
+pub const DEFAULT_HOTKEY: &str = "win+shift+v";
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+// `default` no container: config de versão anterior (sem os campos novos) é
+// LIDA em vez de descartada — cada campo ausente cai no `Config::default()`.
+#[serde(default)]
 pub struct Config {
     pub theme: Appearance,
     pub lang: Lang,
+    /// Atalho global que mostra a janela. Falha de parse cai no padrão
+    /// (`DEFAULT_HOTKEY`) e o app avisa no rodapé.
+    pub hotkey: String,
+    /// Cache do estado lido do registro (HKCU\...\Run). A fonte da verdade é o
+    /// registro; isto só evita a UI abrir com o checkbox mentindo antes do
+    /// primeiro refresh.
+    pub autostart_ok: bool,
+    /// Apps sensíveis: cópias vindas deles não entram no histórico. Vale no
+    /// próximo arranque (o monitor guarda a lista na subida).
+    pub exclude: Vec<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { theme: Appearance::System, lang: Lang::Pt }
+        Self {
+            theme: Appearance::System,
+            lang: Lang::Pt,
+            hotkey: DEFAULT_HOTKEY.to_string(),
+            autostart_ok: false,
+            exclude: DEFAULT_EXCLUDE.iter().copied().map(str::to_string).collect(),
+        }
     }
 }
 
@@ -62,7 +89,7 @@ mod tests {
             .join(format!("utils-ui-test-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let path = dir.join("config.json");
 
-        let cfg = Config { theme: Appearance::Dark, lang: Lang::Es };
+        let cfg = Config { theme: Appearance::Dark, lang: Lang::Es, ..Config::default() };
         save_to(&path, &cfg).unwrap();
         assert_eq!(load_from(&path), cfg);
 
@@ -78,6 +105,26 @@ mod tests {
         save_to(&path, &Config::default()).unwrap();
         std::fs::write(&path, "{ isso não é json").unwrap();
         assert_eq!(load_from(&path), Config::default());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Config da versão anterior (só tema e idioma) continua sendo LIDA: os
+    /// campos novos entram com o default em vez de jogar tudo fora.
+    #[test]
+    fn config_antiga_ganha_os_campos_novos() {
+        let dir = std::env::temp_dir()
+            .join(format!("utils-ui-test-old-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let path = dir.join("config.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, r#"{"theme":"dark","lang":"En"}"#).unwrap();
+
+        let cfg = load_from(&path);
+        assert_eq!(cfg.theme, Appearance::Dark);
+        assert_eq!(cfg.lang, Lang::En);
+        assert_eq!(cfg.hotkey, DEFAULT_HOTKEY);
+        assert!(!cfg.autostart_ok);
+        assert_eq!(cfg.exclude.len(), DEFAULT_EXCLUDE.len());
+
         std::fs::remove_dir_all(&dir).ok();
     }
 }

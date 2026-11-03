@@ -178,6 +178,44 @@ impl History {
         }
     }
 
+    /// Mescla outro histórico (import de `.lutils`) no atual.
+    ///
+    /// Dedupe em duas etapas: mesmo `id` = a entrada mais nova por `ts_ms`
+    /// vence (o `pinned` de qualquer uma das duas fica); mesma CÓPIA com `id`
+    /// diferente (reimportar de outra máquina) vira uma só — a de carimbo mais
+    /// novo, herdando o `pinned`. No fim a lista é reordenada por `ts_ms`
+    /// (mais recente primeiro) e a retenção roda de novo: importar não pode
+    /// furar a cota local.
+    pub fn merge(&mut self, other: History) {
+        let mut merged: Vec<Entry> = std::mem::take(&mut self.entries);
+        for entry in other.entries {
+            if let Some(pos) = merged.iter().position(|e| e.id == entry.id) {
+                // Mesmo id: fica a mais nova, sem perder o pin.
+                if entry.ts_ms >= merged[pos].ts_ms {
+                    let pinned = merged[pos].pinned;
+                    merged[pos] = entry;
+                    merged[pos].pinned |= pinned;
+                } else {
+                    merged[pos].pinned |= entry.pinned;
+                }
+                continue;
+            }
+            let sig = content_signature(&entry);
+            let key = content_key(&entry);
+            if let Some(pos) = merged.iter().position(|e| content_signature(e) == sig && content_key(e) == key) {
+                let existing = &mut merged[pos];
+                existing.pinned |= entry.pinned;
+                existing.ts_ms = existing.ts_ms.max(entry.ts_ms);
+                continue;
+            }
+            merged.push(entry);
+        }
+        merged.sort_by_key(|e| std::cmp::Reverse(e.ts_ms));
+        self.entries = merged;
+        self.cur_bytes = self.entries.iter().map(entry_bytes).sum();
+        self.enforce_retention();
+    }
+
     /// Da mais recente pra mais antiga.
     pub fn iter(&self) -> impl Iterator<Item = &Entry> {
         self.entries.iter()
@@ -302,6 +340,21 @@ pub fn load(path: &Path) -> History {
     h.cur_bytes = h.entries.iter().map(entry_bytes).sum();
     h.enforce_retention();
     h
+}
+
+/// Lê um arquivo para IMPORTAR (`.lutils`). Mesma validação do [`load`], mas o
+/// erro é VISÍVEL: o arquivo foi escolhido pelo usuário na mão e ele precisa
+/// saber por que foi recusado — o silêncio do `load` esconderia o motivo.
+pub fn load_import(path: &Path) -> Result<History, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("ler {}: {e}", path.display()))?;
+    let file: SaveFile = serde_json::from_slice(&bytes).map_err(|_| "o arquivo não é um histórico do Local Utils".to_string())?;
+    if file.version != SAVE_VERSION {
+        return Err(format!("versão de arquivo {} não suportada", file.version));
+    }
+    let mut h = History { entries: file.entries, ..History::default() };
+    h.cur_bytes = h.entries.iter().map(entry_bytes).sum();
+    h.enforce_retention();
+    Ok(h)
 }
 
 #[cfg(test)]
@@ -478,5 +531,77 @@ mod tests {
         assert!(thumb.is_some(), "a miniatura deveria encodar em PNG");
         let decodificada = thumb.and_then(|b| image::load_from_memory(&b).ok());
         assert_eq!(decodificada.map(|i| i.width()), Some(4));
+    }
+
+    #[test]
+    fn merge_dedupe_por_id_e_por_conteudo() {
+        let mut base = History::default();
+        let igual = text_entry("igual", 10);
+        let id_igual = igual.id;
+        base.push(igual.clone());
+        base.push(text_entry("repetido", 20));
+
+        // Import: mesmo id com carimbo (e texto) novo, mesma CÓPIA com id
+        // diferente e uma entrada inédita.
+        let mut outro = History::default();
+        let mut igual_novo = igual;
+        igual_novo.ts_ms = 50;
+        igual_novo.text = Some("igual (editado)".into());
+        outro.push(igual_novo);
+        outro.push(text_entry("repetido", 30));
+        outro.push(text_entry("novo", 40));
+
+        base.merge(outro);
+
+        assert_eq!(base.len(), 3, "id repetido e conteúdo repetido não duplicam");
+        assert_eq!(base.iter().filter(|e| e.text.as_deref() == Some("repetido")).count(), 1);
+        // Mesmo id: fica a versão mais nova (texto importado).
+        assert_eq!(base.iter().find(|e| e.id == id_igual).and_then(|e| e.text.as_deref()), Some("igual (editado)"));
+        // Lista reordenada: a mais recente primeiro.
+        assert_eq!(base.entries().first().map(|e| e.ts_ms), Some(50));
+        assert_eq!(base.entries().last().map(|e| e.ts_ms), Some(30), "o conteúdo repetido herda o carimbo mais novo");
+        assert!(base.iter().any(|e| e.text.as_deref() == Some("novo")));
+    }
+
+    #[test]
+    fn merge_respeita_a_cota_local() {
+        let mut base = History::new(2, MAX_BYTES_DEFAULT);
+        base.push(text_entry("local", 1));
+
+        let mut outro = History::default();
+        outro.push(text_entry("a", 10));
+        outro.push(text_entry("b", 20));
+        outro.push(text_entry("c", 30));
+
+        base.merge(outro);
+        assert_eq!(base.len(), 2, "importar não fura a cota de itens");
+        let textos: Vec<&str> = base.iter().filter_map(|e| e.text.as_deref()).collect();
+        assert_eq!(textos, ["c", "b"]);
+    }
+
+    #[test]
+    fn load_import_reporta_arquivo_invalido() {
+        let dir = temp_dir("import");
+        std::fs::create_dir_all(&dir).ok();
+        let path = dir.join("export.lutils");
+
+        // Ausente: erro visível (a UI mostra o motivo).
+        assert!(load_import(&path).is_err());
+
+        std::fs::write(&path, b"nao e json").ok();
+        assert!(load_import(&path).is_err());
+
+        std::fs::write(&path, br#"{"version":99,"entries":[]}"#).ok();
+        assert!(load_import(&path).is_err(), "versão desconhecida é recusada");
+
+        // Export válido: mesmo formato do history.json.
+        let mut h = History::default();
+        h.push(text_entry("exportado", 7));
+        assert!(save(&path, &h).is_ok());
+        let lido = load_import(&path);
+        assert!(lido.is_ok(), "o arquivo gravado pelo export deve ser importável");
+        assert_eq!(lido.map(|i| i.len()), Ok(1));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

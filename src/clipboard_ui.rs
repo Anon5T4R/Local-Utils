@@ -105,6 +105,14 @@ pub struct ClipboardUiState {
     cache: FilterCache,
 }
 
+impl ClipboardUiState {
+    /// Descarta o cache da lista filtrada: o histórico mudou por fora da aba
+    /// (import de `.lutils`), que pode não mexer no tamanho nem nas pontas.
+    pub fn invalidate(&mut self) {
+        self.cache.filter = None;
+    }
+}
+
 impl Default for ClipboardUiState {
     fn default() -> Self {
         Self {
@@ -572,7 +580,9 @@ fn civil_parts(ms: i64) -> (i64, i64, i64, i64, i64) {
     (y, m, d, rem / 3_600_000, (rem % 3_600_000) / 60_000)
 }
 
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
+/// Dia (epoch-days) → (ano, mês, dia). `pub(crate)`: o export do `.lutils`
+/// carimba a data do nome do arquivo com o mesmo algoritmo.
+pub(crate) fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;

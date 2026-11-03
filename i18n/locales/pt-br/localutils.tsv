@@ -41,3 +41,24 @@
 	Nothing copied yet	Nada copiado ainda
 	Nothing found	Nada encontrado
 	{n} item	{n} item
+	Options	Opções
+	Start with Windows	Iniciar com o Windows
+	Global hotkey	Atalho global
+	shortcut already in use	atalho em conflito
+	invalid shortcut — using the default	atalho inválido — usando o padrão
+	could not register the shortcut	não foi possível registrar o atalho
+	Sensitive apps	Apps sensíveis
+	Executable name (e.g. keepass.exe)	Nome do executável (ex.: keepass.exe)
+	Add	Adicionar
+	Applies after restarting the app	Aplica ao reiniciar o app
+	Export	Exportar
+	Import	Importar
+	history exported	histórico exportado
+	history imported	histórico importado
+	Could not export the history	Não foi possível exportar o histórico
+	Could not import the history	Não foi possível importar o histórico
+	Available on Windows only	Disponível só no Windows
+	Could not change the autostart	Não foi possível alterar a inicialização
+	Close	Fechar
+	Open Local Utils	Abrir Local Utils
+	Quit	Sair

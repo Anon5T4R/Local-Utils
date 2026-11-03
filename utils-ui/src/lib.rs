@@ -13,7 +13,9 @@ use theme::Appearance;
 /// Desenha os combos de idioma + tema (canto de configurações comum aos apps).
 /// Devolve `(config_changed, forget_quick_key_clicked)`.
 pub fn settings_ui(ui: &mut egui::Ui, cfg: &mut Config, show_forget_quick_key: bool) -> (bool, bool) {
-    let before = *cfg;
+    // O config guarda lista/strings: comparar por clone (barato: só no frame
+    // em que a barra de topo é desenhada).
+    let before = cfg.clone();
     let mut forget_clicked = false;
 
     ui.horizontal_wrapped(|ui| {

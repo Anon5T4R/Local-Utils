@@ -30,14 +30,11 @@ pub enum ClipEvent {
     Error(String),
 }
 
-/// Processos cujo CONTEÚDO nunca entra no histórico: gerenciadores de senha.
-/// Comparação pelo nome do executável, em minúsculas (sem caminho).
-pub const DEFAULT_EXCLUDE: &[&str] = &["local-keys.exe", "localkeys.exe", "keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe"];
-
 /// Sobe a thread de monitoramento. O `Sender` é do app: quando o receptor
 /// morre (app fechando), a thread percebe no envio e encerra.
 ///
-/// `exclude` é a lista de executáveis ignorados (ver [`DEFAULT_EXCLUDE`]).
+/// `exclude` é a lista de executáveis ignorados, já persistida no config
+/// (`utils_ui::config::DEFAULT_EXCLUDE` é a lista inicial das opções).
 pub fn spawn_monitor(tx: Sender<ClipEvent>, exclude: Vec<String>) -> Result<std::thread::JoinHandle<()>, String> {
     imp::spawn_monitor(tx, exclude)
 }

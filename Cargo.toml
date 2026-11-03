@@ -55,6 +55,18 @@ qrcode = "0.14"
 # Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e
 # imagem) — mesma crate que o local-keys usa; já vinha no grafo pelo arboard.
 clipboard-win = "5.4"
+# Diálogo nativo de abrir/salvar (export/import do `.lutils`). Sem as default
+# features: o backend win32 é o que vale e o gtk do Linux engordaria o AppImage.
+rfd = { version = "0.17", default-features = false }
+# Bandeja: MESMA crate/versão do local-keys (tray-icon 0.24). Só no Windows —
+# no Linux o tray-icon puxaria muda→gtk3 pra dentro do AppImage.
+tray-icon = "0.24"
+# Atalho global (Win+Shift+V): registra no SO e entrega WM_HOTKEY numa thread
+# própria. 0.8 = última estável; usa windows-sys 0.59, que já estava no grafo.
+global-hotkey = "0.8"
+# Autostart: HKCU\Software\Microsoft\Windows\CurrentVersion\Run — mesma crate
+# (e versão) que o craft-update já puxa de forma transitiva.
+winreg = "0.55"
 # Abrir a página da release ("Download" do prompt do updater) — mesmo caminho
 # do local-keys (ShellExecuteW, sem dep extra de shell). 0.62 = a mesma
 # versão que wgpu/gpu-allocator já puxam: única instância de `windows` no
@@ -64,7 +76,8 @@ clipboard-win = "5.4"
 # (OpenProcess/QueryFullProcessImageNameW da exclusão de apps sensíveis),
 # LibraryLoader (GetModuleHandleW da classe da janela), Graphics_Gdi (o
 # WNDCLASSW só existe com essa feature) e SystemInformation (GetLocalTime dos
-# carimbos relativos da lista).
+# carimbos relativos da lista). WindowsAndMessaging cobre também o winctl
+# (ShowWindow/EnumWindows/GetMessageW da bandeja e do atalho global).
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
