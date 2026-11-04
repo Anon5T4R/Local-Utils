@@ -1,10 +1,14 @@
-//! Atalho global (Windows): registra o atalho no SO e avisa o app quando ele é
-//! pressionado, pra mostrar/focar a janela principal.
+//! Atalho global (Windows): registra os atalhos no SO e avisa o app quando um
+//! deles é pressionado — o principal mostra/foca a janela (ou o popup), o de
+//! captura abre o overlay de seleção de região.
 //!
 //! O registro roda numa thread própria porque a crate `global-hotkey` cria uma
 //! janela Win32 na thread que chama o gerenciador e precisa que ESSA thread
 //! bombeie mensagens (`winctl::run_message_loop`) — só assim o `WM_HOTKEY`
-//! chega. O texto do atalho vem do config (`win+alt+v` por padrão); texto
+//! chega. **Um gerenciador só registra as duas hotkeys**: o evento traz o `id`
+//! da combinação e é ele que decide qual atalho disparou.
+//!
+//! Os textos vêm do config (`win+alt+v` e `win+alt+s` por padrão); texto
 //! inválido não derruba nada: cai no padrão e o app avisa no rodapé.
 //!
 //! Fora do Windows não há atalho global (decisão da suíte): `spawn` devolve
@@ -25,14 +29,16 @@ pub enum HotkeyEvent {
     Invalid,
     /// O gerenciador não subiu: esta sessão fica sem atalho.
     Unavailable,
-    /// O atalho foi pressionado: mostrar/focar a janela.
+    /// O atalho principal foi pressionado: mostrar/focar a janela.
     Pressed,
+    /// O atalho de CAPTURA foi pressionado: abrir o overlay de região.
+    PressedShot,
 }
 
-/// Sobe a thread do atalho. `None` = sem atalho nesta sessão (fora do Windows
+/// Sobe a thread dos atalhos. `None` = sem atalho nesta sessão (fora do Windows
 /// ou falha ao criar a thread).
-pub fn spawn(spec: String) -> Option<Receiver<HotkeyEvent>> {
-    imp::spawn(spec)
+pub fn spawn(primary: String, secondary: String) -> Option<Receiver<HotkeyEvent>> {
+    imp::spawn(primary, secondary)
 }
 
 /// O Win/Super está pressionado AGORA? O egui não carrega essa tecla nas
@@ -62,12 +68,12 @@ mod imp {
 
     use super::HotkeyEvent;
     use crate::winctl;
-    use utils_ui::config::DEFAULT_HOTKEY;
+    use utils_ui::config::{DEFAULT_HOTKEY, DEFAULT_HOTKEY_SCREENSHOT};
 
-    pub fn spawn(spec: String) -> Option<Receiver<HotkeyEvent>> {
+    pub fn spawn(primary: String, secondary: String) -> Option<Receiver<HotkeyEvent>> {
         let (tx, rx) = channel();
         let fallback = tx.clone();
-        let handle = std::thread::Builder::new().name("utils-hotkey".into()).spawn(move || run(&spec, tx));
+        let handle = std::thread::Builder::new().name("utils-hotkey".into()).spawn(move || run(&primary, &secondary, tx));
         match handle {
             Ok(_) => Some(rx),
             Err(e) => {
@@ -79,11 +85,11 @@ mod imp {
         }
     }
 
-    /// Tudo que toca o SO acontece nesta thread: gerenciador, registro e o
-    /// pump de mensagens que entrega o `WM_HOTKEY`.
-    fn run(spec: &str, tx: Sender<HotkeyEvent>) {
+    /// Tudo que toca o SO acontece nesta thread: gerenciador, registros e o
+    /// pump de mensagens que entrega os `WM_HOTKEY`.
+    fn run(primary: &str, secondary: &str, tx: Sender<HotkeyEvent>) {
         // Config quebrada não derruba o app: cai no padrão e avisa.
-        let (mods, code) = match parse(spec) {
+        let (mods, code) = match parse(primary) {
             Some(hk) => hk,
             None => {
                 let _ = tx.send(HotkeyEvent::Invalid);
@@ -106,9 +112,25 @@ mod imp {
         };
         let hotkey = HotKey::new(Some(mods), code);
         if let Err(e) = manager.register(hotkey) {
-            eprintln!("hotkey: registrar {spec}: {e}");
+            eprintln!("hotkey: registrar {primary}: {e}");
             let _ = tx.send(HotkeyEvent::Conflict);
             return;
+        }
+
+        // Captura: opcional de propósito — se ela falhar (conflito com outro
+        // app), o atalho principal continua valendo. O `id` da combinação é o
+        // que separa os dois eventos no handler.
+        let shot = match parse(secondary) {
+            Some((smods, scode)) => Some(HotKey::new(Some(smods), scode)),
+            None => {
+                let _ = tx.send(HotkeyEvent::Invalid);
+                parse(DEFAULT_HOTKEY_SCREENSHOT).map(|(smods, scode)| HotKey::new(Some(smods), scode))
+            }
+        };
+        let shot_id = shot.map(|h| h.id());
+        if let Some(Err(e)) = shot.map(|hk| manager.register(hk)) {
+            eprintln!("hotkey: registrar captura: {e}");
+            let _ = tx.send(HotkeyEvent::Conflict);
         }
         let _ = tx.send(HotkeyEvent::Registered);
 
@@ -123,8 +145,9 @@ mod imp {
             // e a janela inteira é o app (config `popup_instead_of_window`), e
             // ele só roda num frame novo.
             winctl::wake();
+            let event = if Some(ev.id) == shot_id { HotkeyEvent::PressedShot } else { HotkeyEvent::Pressed };
             if let Ok(tx) = events.lock() {
-                let _ = tx.send(HotkeyEvent::Pressed);
+                let _ = tx.send(event);
             }
         }));
 
@@ -232,6 +255,8 @@ mod imp {
             assert_eq!(parse(" Ctrl + Alt + F9 "), Some((Modifiers::CONTROL | Modifiers::ALT, Code::F9)));
             assert_eq!(parse("win+1"), Some((Modifiers::SUPER, Code::Digit1)));
             assert_eq!(parse("shift+meta+z"), Some((Modifiers::SUPER | Modifiers::SHIFT, Code::KeyZ)));
+            // O atalho de captura usa o MESMO parser: tem de sair igual.
+            assert_eq!(parse(DEFAULT_HOTKEY_SCREENSHOT), Some((Modifiers::ALT | Modifiers::SUPER, Code::KeyS)));
         }
 
         #[test]
@@ -253,7 +278,7 @@ mod imp {
     use super::HotkeyEvent;
 
     /// Fora do Windows não há atalho global: o app nasce sem o canal.
-    pub fn spawn(_spec: String) -> Option<Receiver<HotkeyEvent>> {
+    pub fn spawn(_primary: String, _secondary: String) -> Option<Receiver<HotkeyEvent>> {
         None
     }
 }

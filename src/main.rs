@@ -8,6 +8,7 @@
 
 mod app;
 mod autostart;
+mod capture;
 mod clipboard;
 mod clipboard_ui;
 mod history;
@@ -16,6 +17,7 @@ mod ocr;
 mod options;
 mod paste;
 mod popup;
+mod shot_editor;
 mod transfer;
 mod tray;
 mod ui;

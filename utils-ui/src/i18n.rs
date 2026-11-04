@@ -145,6 +145,29 @@ pub enum Key {
     OcrEmpty,
     OcrFailed,
     CopyText,
+    // captura de tela (aba Screenshot): dica do atalho e falha da captura
+    CaptureHint,
+    CaptureFailed,
+    // editor da captura: ferramentas da barra
+    ToolSelect,
+    ToolRect,
+    ToolArrow,
+    ToolText,
+    ToolPixelate,
+    ToolBlur,
+    ToolCrop,
+    // editor da captura: ações e rótulos
+    Undo,
+    ClearAnnotations,
+    CropReset,
+    CopyShot,
+    SaveShot,
+    Color,
+    Thickness,
+    Strength,
+    ShotText,
+    ShotSaved,
+    ShotSaveFailed,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -235,6 +258,26 @@ const KEYS: &[Key] = &[
     Key::OcrEmpty,
     Key::OcrFailed,
     Key::CopyText,
+    Key::CaptureHint,
+    Key::CaptureFailed,
+    Key::ToolSelect,
+    Key::ToolRect,
+    Key::ToolArrow,
+    Key::ToolText,
+    Key::ToolPixelate,
+    Key::ToolBlur,
+    Key::ToolCrop,
+    Key::Undo,
+    Key::ClearAnnotations,
+    Key::CropReset,
+    Key::CopyShot,
+    Key::SaveShot,
+    Key::Color,
+    Key::Thickness,
+    Key::Strength,
+    Key::ShotText,
+    Key::ShotSaved,
+    Key::ShotSaveFailed,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -331,6 +374,29 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::OcrEmpty => "no text found in the image",
         Key::OcrFailed => "Could not read the image",
         Key::CopyText => "Copy text",
+        // `{hotkey}` é preenchido pelo chamador (o atalho do config, legível).
+        Key::CaptureHint => "Press {hotkey} to capture",
+        Key::CaptureFailed => "Could not capture the screen",
+        Key::ToolSelect => "Select",
+        Key::ToolRect => "Rectangle",
+        Key::ToolArrow => "Arrow",
+        // Reaproveita a linha "Text" do catálogo (a mesma do filtro da aba
+        // Clipboard): uma chave por STRING, não por enum.
+        Key::ToolText => "Text",
+        Key::ToolPixelate => "Pixelate",
+        Key::ToolBlur => "Blur",
+        Key::ToolCrop => "Crop",
+        Key::Undo => "Undo",
+        Key::ClearAnnotations => "Clear annotations",
+        Key::CropReset => "Reset crop",
+        Key::CopyShot => "Copy image",
+        Key::SaveShot => "Save as PNG",
+        Key::Color => "Color",
+        Key::Thickness => "Thickness",
+        Key::Strength => "Strength",
+        Key::ShotText => "Text to insert",
+        Key::ShotSaved => "screenshot saved",
+        Key::ShotSaveFailed => "Could not save the screenshot",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)
@@ -419,5 +485,24 @@ mod tests {
         assert_eq!(t(Lang::Es, Key::PopupNoResults), "Nada encontrado");
         // "OCR" não traduz.
         assert_eq!(t(Lang::Pt, Key::OcrButton), "OCR");
+    }
+
+    /// As chaves do v0.3 (captura + editor) têm linha nos TSVs: sem elas a aba
+    /// cairia no inglês sem aviso. `ToolText` de propósito reaproveita a linha
+    /// "Text" do filtro da aba Clipboard (a chave do catálogo é a string).
+    #[test]
+    fn chaves_da_captura_saem_do_catalogo() {
+        assert_eq!(t(Lang::Pt, Key::CaptureHint), "Pressione {hotkey} para capturar");
+        assert_eq!(t(Lang::Pt, Key::CaptureFailed), "Não foi possível capturar a tela");
+        assert_eq!(t(Lang::Pt, Key::ToolRect), "Retângulo");
+        assert_eq!(t(Lang::Pt, Key::ToolArrow), "Seta");
+        assert_eq!(t(Lang::Pt, Key::ToolPixelate), "Pixelizar");
+        assert_eq!(t(Lang::Pt, Key::ToolBlur), "Desfocar");
+        assert_eq!(t(Lang::Pt, Key::Undo), "Desfazer");
+        assert_eq!(t(Lang::Pt, Key::ShotSaved), "captura salva");
+        assert_eq!(t(Lang::Pt, Key::ToolText), "Texto", "reaproveita a linha do filtro");
+        assert_eq!(t(Lang::Es, Key::CaptureHint), "Pulse {hotkey} para capturar");
+        assert_eq!(t(Lang::Es, Key::ToolBlur), "Desenfocar");
+        assert_eq!(t(Lang::Es, Key::ShotSaveFailed), "No se pudo guardar la captura");
     }
 }

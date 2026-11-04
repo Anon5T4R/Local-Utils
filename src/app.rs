@@ -1,8 +1,9 @@
 //! Janela principal do Local Utils: barra de topo (só as ações da direita —
 //! um tema/idioma, opções e o check de updates; o título é o da titlebar do
 //! SO), fileira de abas do roadmap e rodapé de status. A aba Clipboard (a
-//! âncora do app) desenha o histórico em `clipboard_ui.rs`; as demais ainda
-//! são esqueleto e ganham conteúdo na sua versão do roadmap.
+//! âncora do app) desenha o histórico em `clipboard_ui.rs`; a aba Screenshot
+//! edita a captura pendente (`shot_editor.rs`); as demais ainda são esqueleto e
+//! ganham conteúdo na sua versão do roadmap.
 
 use std::sync::mpsc::Receiver;
 
@@ -12,6 +13,7 @@ use utils_ui::i18n::{self, Key, Lang};
 use utils_ui::theme;
 
 use crate::autostart;
+use crate::capture::{self, Capture};
 use crate::clipboard::{self, ClipEvent};
 use crate::clipboard_ui::{self, ClipboardUiState};
 use crate::history;
@@ -19,6 +21,7 @@ use crate::hotkey::{self, HotkeyEvent};
 use crate::ocr::{self, Ocr};
 use crate::options::{self, OptionsState};
 use crate::popup::{self, Popup};
+use crate::shot_editor::{self, Shot};
 use crate::transfer;
 use crate::tray::{self, TrayCmd};
 use crate::ui as kit;
@@ -99,6 +102,11 @@ pub struct UtilsApp {
     hotkey_rx: Option<Receiver<HotkeyEvent>>,
     /// Popup rápido do atalho (viewport próprio, no cursor).
     popup: Popup,
+    /// Overlay de seleção da captura de tela (viewport próprio, fullscreen).
+    capture: Capture,
+    /// Captura pendente no editor da aba Screenshot (v0.3 guarda UMA: uma
+    /// captura nova substitui a anterior).
+    shot: Option<Shot>,
     /// Colagem pendente do popup: o Ctrl+V roda no frame SEGUINTE, depois que
     /// o viewport já sumiu — o popup não pode estar na frente da janela que vai
     /// receber as teclas.
@@ -152,7 +160,7 @@ impl UtilsApp {
             open: i18n::t(cfg.lang, Key::TrayOpen).to_string(),
             quit: i18n::t(cfg.lang, Key::TrayQuit).to_string(),
         });
-        let hotkey_rx = hotkey::spawn(cfg.hotkey.clone());
+        let hotkey_rx = hotkey::spawn(cfg.hotkey.clone(), cfg.hotkey_screenshot.clone());
 
         Self {
             cfg,
@@ -171,6 +179,8 @@ impl UtilsApp {
             tray_icon,
             hotkey_rx,
             popup: Popup::default(),
+            capture: Capture::default(),
+            shot: None,
             popup_paste: None,
             ocr: Ocr::default(),
             #[cfg(windows)]
@@ -244,12 +254,23 @@ impl UtilsApp {
                     }
                     ctx.request_repaint();
                 }
+                HotkeyEvent::PressedShot => self.start_capture(ctx),
                 HotkeyEvent::Conflict => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyConflict))),
                 HotkeyEvent::Invalid => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyInvalid))),
                 HotkeyEvent::Unavailable => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyUnavailable))),
                 HotkeyEvent::Registered => {}
             }
         }
+    }
+
+    /// Abre a captura de tela (atalho de captura): congela o desktop e sobe o
+    /// overlay de seleção. Falha vira status no rodapé — no Linux a captura é
+    /// stub e o aviso sai traduzido.
+    fn start_capture(&mut self, ctx: &egui::Context) {
+        if let Err(e) = self.capture.begin(ctx) {
+            self.set_status(format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::CaptureFailed)));
+        }
+        ctx.request_repaint();
     }
 
     /// Recopia a entrada e cola na janela que estava em foco antes do popup
@@ -549,6 +570,7 @@ impl eframe::App for UtilsApp {
         });
 
         let mut outcome = clipboard_ui::Outcome::default();
+        let mut shot_status: Option<String> = None;
         egui::CentralPanel::default().show(ui, |ui| {
             // Fileira de abas: `selectable_value` marca a ativa e troca o
             // painel na hora (sem estado extra).
@@ -562,6 +584,11 @@ impl eframe::App for UtilsApp {
                 // Clipboard é a âncora: lista virtualizada do histórico.
                 Tab::Clipboard => {
                     outcome = clipboard_ui::show(ui, self.cfg.lang, &mut self.history, &mut self.clip_ui);
+                }
+                // Screenshot: editor da captura pendente (ou a dica do atalho).
+                Tab::Screenshot => {
+                    let shot = shot_editor::show(ui, self.cfg.lang, &self.cfg.hotkey_screenshot, self.shot.as_mut());
+                    shot_status = shot.status;
                 }
                 // As demais abas ainda são esqueleto: aviso traduzido no centro.
                 _ => {
@@ -580,6 +607,12 @@ impl eframe::App for UtilsApp {
             self.set_status(status);
             // O rodapé já foi desenhado neste frame: sem o pedido de repaint o
             // "copiado ✓" só apareceria no próximo evento do usuário.
+            ctx.request_repaint();
+        }
+        // Status do editor da captura (copiar/salvar). Vazio = diálogo
+        // cancelado, nada pro rodapé.
+        if let Some(status) = shot_status.filter(|s| !s.is_empty()) {
+            self.set_status(status);
             ctx.request_repaint();
         }
         // OCR pedido pela linha da imagem: sobe a thread (o resultado entra no
@@ -601,6 +634,17 @@ impl eframe::App for UtilsApp {
         if self.popup.is_open() {
             self.popup.sync(&self.history);
             popup::show(ctx, self.cfg.lang, &self.popup);
+        }
+
+        // Captura de tela: o overlay de seleção é um viewport próprio (como o
+        // popup). Confirmou? A aba Screenshot abre com o recorte no editor.
+        if self.capture.is_open() {
+            capture::show(ctx, self.cfg.lang, &self.cfg.hotkey_screenshot, &self.capture);
+        }
+        if let Some(image) = self.capture.take_result() {
+            self.shot = Some(Shot::new(image));
+            self.tab = Tab::Screenshot;
+            ctx.request_repaint();
         }
 
         // Opções (engrenagem): por cima do painel central e abaixo do prompt de

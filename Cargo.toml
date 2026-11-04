@@ -52,6 +52,11 @@ craft-update = { path = "libs/craft-libs/crates/update", features = ["egui"] }
 # a feature `image` do crate reaproveita o `image 0.25` que já está no grafo,
 # nenhuma crate nova entra por causa disso.
 qrcode = "0.14"
+# Texto das anotações da captura (`shot_editor.rs`): a `image` não rasteriza
+# fonte nenhuma. `ab_glyph` é puro Rust (sem freetype/fontconfig), Apache-2.0/MIT,
+# e desenha glifo a glifo com cobertura — dá contorno e alpha blend na mão.
+# A fonte é a Ubuntu-Light que o epaint já embute (`libs/egui/...`).
+ab_glyph = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 # Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e
@@ -66,6 +71,11 @@ tray-icon = "0.24"
 # Atalho global (Win+Alt+V): registra no SO e entrega WM_HOTKEY numa thread
 # própria. 0.8 = última estável; usa windows-sys 0.59, que já estava no grafo.
 global-hotkey = "0.8"
+# Captura de tela (`capture.rs`): cada monitor vira um `RgbaImage` congelado que
+# o overlay de seleção desenha. MESMA versão pinada do local-paint (=0.9.8, já
+# registrada no local-deps) — ela usa `windows 0.62` e `image 0.25`, as duas que
+# este app já tem, então não entra instância duplicada de nenhuma das duas.
+xcap = "=0.9.8"
 # Autostart: HKCU\Software\Microsoft\Windows\CurrentVersion\Run — mesma crate
 # (e versão) que o craft-update já puxa de forma transitiva.
 winreg = "0.55"

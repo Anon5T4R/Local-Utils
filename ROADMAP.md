@@ -14,6 +14,16 @@ de clipboard residente na bandeja. Plano completo em `docs/planos/localutils.md`
 | v0.5 | Sistema (monitor + temperaturas best-effort) + color picker |
 | v0.6+ | Snippets com placeholders (opcional) |
 
+## Pendências da aba Screenshot (v0.3)
+
+- Histórico de capturas: a v0.3 guarda **só a pendente** — captura nova
+  substitui a anterior. Uma lista de shots da sessão (miniaturas + reabrir no
+  editor) fica pra depois.
+- Seleção de região multi-DPI: o recorte é exato (mapeamento por razão), mas o
+  alinhamento visual do overlay pode sair torto com monitores de DPI diferente.
+- Opções: o atalho de captura (`hotkey_screenshot`) ainda não tem campo no
+  diálogo de opções — hoje só pelo `config.json`.
+
 ## Abas do esqueleto (v0.0 do scaffold)
 
 | Aba | Versão de entrada |

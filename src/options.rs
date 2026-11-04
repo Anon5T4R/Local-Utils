@@ -368,8 +368,9 @@ fn is_function_key(key: egui::Key) -> bool {
 }
 
 /// Versão legível do texto salvo: `win+alt+v` → `Win + Alt + V`. O config
-/// continua no formato do parser; isto é só o que a tela mostra.
-fn pretty_hotkey(spec: &str) -> String {
+/// continua no formato do parser; isto é só o que a tela mostra. Usado também
+/// pela dica da aba Screenshot (o atalho de captura aparece legível).
+pub(crate) fn pretty_hotkey(spec: &str) -> String {
     let parts: Vec<String> = spec.split('+').map(str::trim).filter(|p| !p.is_empty()).map(pretty_token).collect();
     parts.join(" + ")
 }

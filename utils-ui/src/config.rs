@@ -22,6 +22,13 @@ pub const DEFAULT_EXCLUDE: &[&str] = &["local-keys.exe", "localkeys.exe", "keepa
 /// o atalho dela — mudar o padrão não mexe no que o usuário já escolheu.
 pub const DEFAULT_HOTKEY: &str = "win+alt+v";
 
+/// Atalho global de CAPTURA (`win+alt+s`).
+///
+/// Segunda hotkey do app, independente da primeira: registrada no mesmo
+/// gerenciador (`hotkey.rs`) e só entra em conflito se outro app já a tiver.
+/// Mesma regra do atalho principal — `serde(default)` só vale pra config nova.
+pub const DEFAULT_HOTKEY_SCREENSHOT: &str = "win+alt+s";
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 // `default` no container: config de versão anterior (sem os campos novos) é
 // LIDA em vez de descartada — cada campo ausente cai no `Config::default()`.
@@ -32,6 +39,9 @@ pub struct Config {
     /// Atalho global que mostra a janela. Falha de parse cai no padrão
     /// (`DEFAULT_HOTKEY`) e o app avisa no rodapé.
     pub hotkey: String,
+    /// Atalho global que abre a captura de tela (`capture.rs`).
+    /// Falha de parse cai no padrão (`DEFAULT_HOTKEY_SCREENSHOT`).
+    pub hotkey_screenshot: String,
     /// Cache do estado lido do registro (HKCU\...\Run). A fonte da verdade é o
     /// registro; isto só evita a UI abrir com o checkbox mentindo antes do
     /// primeiro refresh.
@@ -51,6 +61,7 @@ impl Default for Config {
             theme: Appearance::System,
             lang: Lang::Pt,
             hotkey: DEFAULT_HOTKEY.to_string(),
+            hotkey_screenshot: DEFAULT_HOTKEY_SCREENSHOT.to_string(),
             autostart_ok: false,
             exclude: DEFAULT_EXCLUDE.iter().copied().map(str::to_string).collect(),
             popup_instead_of_window: true,
@@ -132,6 +143,7 @@ mod tests {
         assert_eq!(cfg.theme, Appearance::Dark);
         assert_eq!(cfg.lang, Lang::En);
         assert_eq!(cfg.hotkey, DEFAULT_HOTKEY);
+        assert_eq!(cfg.hotkey_screenshot, DEFAULT_HOTKEY_SCREENSHOT);
         assert!(!cfg.autostart_ok);
         assert_eq!(cfg.exclude.len(), DEFAULT_EXCLUDE.len());
         assert!(cfg.popup_instead_of_window, "o popup no cursor nasce ligado");
