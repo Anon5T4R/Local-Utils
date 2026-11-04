@@ -63,6 +63,13 @@ qrcode = "0.14"
 # e desenha glifo a glifo com cobertura — dá contorno e alpha blend na mão.
 # A fonte é a Ubuntu-Light que o epaint já embute (`libs/egui/...`).
 ab_glyph = "0.2"
+# JPEG XL como ORIGEM do conversor (`convert.rs`): o `jxl-oxide` é um
+# decodificador puro Rust — NÃO existe encoder JXL maduro em Rust, então o JXL
+# nunca aparece como destino na UI. 0.12 = a versão que o local-paint já usa
+# (registrada no local-deps); a feature `image` liga o `JxlDecoder`, que
+# implementa `image::ImageDecoder`. O `bytemuck` que ela pede já está no grafo
+# pelo próprio `image`, e o `image` 0.25 dela casa com o nosso (0.25.x).
+jxl-oxide = { version = "0.12", features = ["image"] }
 
 [target.'cfg(windows)'.dependencies]
 # Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e

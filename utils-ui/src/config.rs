@@ -59,6 +59,9 @@ pub struct Config {
     /// Texto da aba Notas (scratchpad). Gravado pelo autosave debounced da
     /// própria aba (1s depois da última tecla).
     pub notes: String,
+    /// Recentes da aba Cor, em hex `#RRGGBB`, mais novo primeiro. O cap (32) e
+    /// o dedupe ficam na aba (`picker.rs`); aqui é só a persistência.
+    pub recent_colors: Vec<String>,
 }
 
 impl Default for Config {
@@ -73,6 +76,7 @@ impl Default for Config {
             popup_instead_of_window: true,
             alarms: Vec::new(),
             notes: String::new(),
+            recent_colors: Vec::new(),
         }
     }
 }
@@ -157,6 +161,7 @@ mod tests {
         assert!(cfg.popup_instead_of_window, "o popup no cursor nasce ligado");
         assert!(cfg.alarms.is_empty(), "alarmes nascem sem nenhum");
         assert!(cfg.notes.is_empty(), "o scratchpad nasce vazio");
+        assert!(cfg.recent_colors.is_empty(), "os recentes de cor nascem vazios");
 
         std::fs::remove_dir_all(&dir).ok();
     }

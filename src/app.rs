@@ -17,10 +17,12 @@ use crate::autostart;
 use crate::capture::{self, Capture};
 use crate::clipboard::{self, ClipEvent};
 use crate::clipboard_ui::{self, ClipboardUiState};
+use crate::convert::{self, ConvertState};
 use crate::history;
 use crate::hotkey::{self, HotkeyEvent};
 use crate::ocr::{self, Ocr};
 use crate::options::{self, OptionsState};
+use crate::picker::{self, PickerState};
 use crate::popup::{self, Popup};
 use crate::shot_editor::{self, Shot};
 use crate::tools::{self, ToolsState};
@@ -50,11 +52,13 @@ pub enum Tab {
     Sistema,
     Tools,
     Scratchpad,
+    Cor,
+    Converter,
 }
 
 impl Tab {
     /// Todas as abas, na ordem do roadmap.
-    const ALL: [Tab; 5] = [Tab::Clipboard, Tab::Screenshot, Tab::Sistema, Tab::Tools, Tab::Scratchpad];
+    const ALL: [Tab; 7] = [Tab::Clipboard, Tab::Screenshot, Tab::Sistema, Tab::Tools, Tab::Scratchpad, Tab::Cor, Tab::Converter];
 
     fn label(self, lang: Lang) -> &'static str {
         let key = match self {
@@ -63,6 +67,8 @@ impl Tab {
             Tab::Sistema => Key::TabSystem,
             Tab::Tools => Key::TabTools,
             Tab::Scratchpad => Key::TabScratchpad,
+            Tab::Cor => Key::TabPicker,
+            Tab::Converter => Key::TabConvert,
         };
         i18n::t(lang, key)
     }
@@ -121,6 +127,10 @@ pub struct UtilsApp {
     tools: ToolsState,
     /// Aba Notas: só o marcador do autosave (o texto mora no config).
     notes: NotesState,
+    /// Aba Cor: seletor (hex/RGB/HSL), conta-gotas e recentes.
+    picker: PickerState,
+    /// Aba Converter: fila de imagens + worker de conversão.
+    convert: ConvertState,
     /// Fechar de VERDADE (pedido do updater): sem isto o X só esconde.
     #[cfg(windows)]
     allow_close: bool,
@@ -170,6 +180,9 @@ impl UtilsApp {
         });
         let hotkey_rx = hotkey::spawn(cfg.hotkey.clone(), cfg.hotkey_screenshot.clone());
 
+        // Recentes da aba Cor: semeados do config ANTES de o `cfg` ir pro Self.
+        let picker = PickerState::from_config(&cfg.recent_colors);
+
         Self {
             cfg,
             status: String::new(),
@@ -193,6 +206,8 @@ impl UtilsApp {
             ocr: Ocr::default(),
             tools: ToolsState::default(),
             notes: NotesState::default(),
+            picker,
+            convert: ConvertState::default(),
             #[cfg(windows)]
             allow_close: false,
         }
@@ -520,6 +535,13 @@ impl eframe::App for UtilsApp {
         self.drain_clipboard();
         // OCR: resultado da thread de leitura (modal com o texto).
         self.drain_ocr(ctx);
+        // Conversão de imagens: drena o progresso do worker. O canal não
+        // acorda a UI (mesmo motivo da OCR) — enquanto roda, insistimos no
+        // repaint curto, com a aba aberta ou não.
+        self.convert.poll();
+        if self.convert.running() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
 
         // Relógio/alarmes da aba Ferramentas: o tique compara com `now_ms` a
         // cada frame — a aba pode estar FECHADA e o alarme tem que tocar do
@@ -617,6 +639,10 @@ impl eframe::App for UtilsApp {
         let mut tool_status: Option<String> = None;
         let mut tool_cfg = false;
         let mut tool_history = false;
+        let mut picker_status: Option<String> = None;
+        let mut picker_cfg = false;
+        let mut picker_history = false;
+        let mut convert_status: Option<String> = None;
         egui::CentralPanel::default().show(ui, |ui| {
             // Fileira de abas: `selectable_value` marca a ativa e troca o
             // painel na hora (sem estado extra). O rótulo de Ferramentas ganha
@@ -655,6 +681,19 @@ impl eframe::App for UtilsApp {
                 Tab::Scratchpad => {
                     tools_notes::show(ui, self.cfg.lang, &mut self.notes, &mut self.cfg.notes);
                 }
+                // Cor: seletor + conta-gotas + recentes (o "copiar" cria entrada
+                // Text no histórico, como nas Ferramentas).
+                Tab::Cor => {
+                    let pick = picker::show(ui, self.cfg.lang, &mut self.picker, &mut self.history);
+                    picker_history |= pick.history_changed;
+                    picker_cfg |= pick.cfg_changed;
+                    picker_status = pick.status;
+                }
+                // Converter: fila de imagens (drop/seleção) → PNG/JPEG/WebP.
+                Tab::Converter => {
+                    let conv = convert::show(ui, self.cfg.lang, &mut self.convert);
+                    convert_status = conv.status;
+                }
                 // Aba Sistema ainda é esqueleto: aviso traduzido no centro.
                 _ => {
                     let _ = ui.centered_and_justified(|ui| {
@@ -692,6 +731,25 @@ impl eframe::App for UtilsApp {
             self.set_status(status);
             ctx.request_repaint();
         }
+        // Aba Cor: o copiar de um formato cria entrada Text no histórico; os
+        // recentes (conta-gotas/clique/digitação confirmada) vão pro config.
+        if picker_history {
+            self.save_history();
+        }
+        if picker_cfg {
+            self.cfg.recent_colors = self.picker.recent_hex();
+            self.save_config();
+        }
+        if let Some(status) = picker_status.filter(|s| !s.is_empty()) {
+            self.set_status(status);
+            ctx.request_repaint();
+        }
+        // Converter: o único status possível é falha ao subir a thread (as
+        // linhas mostram o resto por conta própria).
+        if let Some(status) = convert_status.filter(|s| !s.is_empty()) {
+            self.set_status(status);
+            ctx.request_repaint();
+        }
         // OCR pedido pela linha da imagem: sobe a thread (o resultado entra no
         // `drain_ocr` dos próximos frames).
         if let Some(id) = outcome.ocr {
@@ -721,6 +779,20 @@ impl eframe::App for UtilsApp {
         if let Some(image) = self.capture.take_result() {
             self.shot = Some(Shot::new(image));
             self.tab = Tab::Screenshot;
+            ctx.request_repaint();
+        }
+
+        // Conta-gotas (aba Cor): mesmo desenho da captura — viewport próprio
+        // com a tela congelada, lupa e Esc. A cor escolhida entra nos recentes
+        // e a aba Cor abre com ela.
+        if self.picker.eyedropping() {
+            picker::show_overlay(ctx, self.cfg.lang, &self.picker);
+        }
+        if let Some(color) = self.picker.take_picked() {
+            self.picker.adopt(color);
+            self.cfg.recent_colors = self.picker.recent_hex();
+            self.save_config();
+            self.tab = Tab::Cor;
             ctx.request_repaint();
         }
 

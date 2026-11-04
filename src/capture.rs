@@ -16,6 +16,10 @@
 //! `xcap` reporta (px físicos), então monitores lado a lado ficam contíguos sem
 //! consultar as métricas do Win32 à parte.
 //!
+//! O conta-gotas da aba Cor (`picker.rs`) reusa o congelamento e a geometria
+//! daqui ([`Frozen`] + [`pixel_at`]): o overlay dele é a mesma tela congelada,
+//! só que com lupa e sem arraste.
+//!
 //! **Limitação de multi-DPI**: o viewport é posicionado/dimensionado em POINTS
 //! (px ÷ `pixels_per_point` do app). Com monitores de DPI DIFERENTE o Windows
 //! pode desenhar o overlay num tamanho que não casa exatamente com o canvas — o
@@ -37,7 +41,8 @@ const OVERLAY_TITLE: &str = "Local Utils — captura";
 const MIN_SIDE: u32 = 8;
 /// Margem extra do overlay além da borda da tela (points): cobre o
 /// arredondamento e garante que os cantos são clicáveis (ver `Frozen`).
-const OVERSCAN: f32 = 3.0;
+/// Pública na crate porque o conta-gotas (`picker.rs`) usa a MESMA geometria.
+pub(crate) const OVERSCAN: f32 = 3.0;
 
 /// Id do viewport. Fixo: a mesma captura reusa a mesma janela.
 fn viewport_id() -> egui::ViewportId {
@@ -45,12 +50,48 @@ fn viewport_id() -> egui::ViewportId {
 }
 
 /// O retrato congelado do desktop virtual + onde o viewport nasce.
-struct Frozen {
-    image: RgbaImage,
+///
+/// Compartilhado com o conta-gotas (`picker.rs`): os dois overlays mostram a
+/// tela congelada do mesmo jeito, então a geometria (overscan, conversão de px
+/// físicos para points) mora aqui e não é recalculada em cada módulo.
+pub(crate) struct Frozen {
+    pub(crate) image: RgbaImage,
     /// Canto do desktop virtual em points (o `with_position` do viewport).
-    pos_pt: egui::Pos2,
+    pub(crate) pos_pt: egui::Pos2,
     /// Tamanho do desktop virtual em points.
-    size_pt: egui::Vec2,
+    pub(crate) size_pt: egui::Vec2,
+}
+
+impl Frozen {
+    /// Congela o desktop e calcula a geometria do overlay. Roda na thread da
+    /// UI: são ~1 frame de trabalho e evita corrida com o overlay abrindo.
+    pub(crate) fn capture(ctx: &egui::Context) -> Result<Self, String> {
+        let (image, origin) = imp::capture_all()?;
+        Ok(Self::at(ctx, image, origin))
+    }
+
+    /// Monta a geometria do overlay para um retrato já capturado. `origin` é o
+    /// canto do desktop virtual em px físicos (o `xcap` reporta assim).
+    fn at(ctx: &egui::Context, image: RgbaImage, origin: (i32, i32)) -> Self {
+        let ppp = ctx.pixels_per_point().max(0.1);
+        Self {
+            // Overscan de 3 points por lado: arredondamento da posição/tamanho
+            // deixava os EXTREMOS da tela fora do overlay, e o clique no canto
+            // atravessava pra janela de trás (arrastar "movia a captura" —
+            // feedback do João). Cobrir além da borda garante que nenhum
+            // clique escape; o recorte mapeia por razão e nem sente.
+            pos_pt: egui::pos2(origin.0 as f32 / ppp - OVERSCAN, origin.1 as f32 / ppp - OVERSCAN),
+            size_pt: egui::vec2(image.width() as f32 / ppp + OVERSCAN * 2.0, image.height() as f32 / ppp + OVERSCAN * 2.0),
+            image,
+        }
+    }
+
+    /// Retângulo DESENHADO da imagem dentro do overlay (o miolo, sem a faixa
+    /// de overscan). É a referência do mapeamento por razão: com o overscan,
+    /// mapear pelo rect inteiro deslocaria a leitura em ~3 points nas bordas.
+    pub(crate) fn image_rect(&self, full: egui::Rect) -> egui::Rect {
+        egui::Rect::from_min_max(full.min + egui::vec2(OVERSCAN, OVERSCAN), full.max - egui::vec2(OVERSCAN, OVERSCAN))
+    }
 }
 
 /// Estado compartilhado entre o app e o callback do viewport (o callback exige
@@ -104,21 +145,11 @@ impl Capture {
         }
         // A captura roda na thread da UI: são ~1 frame de trabalho e evita
         // corrida com o próprio overlay abrindo.
-        let (image, origin) = imp::capture_all()?;
-        let ppp = ctx.pixels_per_point().max(0.1);
+        let frame = Frozen::capture(ctx)?;
         let Ok(mut st) = self.state.lock() else {
             return Err("estado da captura indisponível".into());
         };
-        st.frame = Some(Frozen {
-            // Overscan de 3 points por lado: arredondamento da posição/tamanho
-            // deixava os EXTREMOS da tela fora do overlay, e o clique no canto
-            // atravessava pra janela de trás (arrastar "movia a captura" —
-            // feedback do João). Cobrir além da borda garante que nenhum
-            // clique escape; o recorte mapeia por razão e nem sente.
-            pos_pt: egui::pos2(origin.0 as f32 / ppp - OVERSCAN, origin.1 as f32 / ppp - OVERSCAN),
-            size_pt: egui::vec2(image.width() as f32 / ppp + OVERSCAN * 2.0, image.height() as f32 / ppp + OVERSCAN * 2.0),
-            image,
-        });
+        st.frame = Some(frame);
         st.tex = None;
         st.sel = None;
         st.confirm = false;
@@ -364,6 +395,25 @@ fn crop_selection(full: egui::Rect, img: &RgbaImage, (a, b): (egui::Pos2, egui::
     Some(image::imageops::crop_imm(img, x0, y0, cw, ch).to_image())
 }
 
+/// Pixel da imagem sob um ponto do overlay, com o mesmo mapeamento por RAZÃO
+/// do recorte (imagem ÷ área desenhada). Usado pelo conta-gotas (`picker.rs`),
+/// que passa o retângulo DESENHADO da imagem (sem a faixa de overscan).
+pub(crate) fn pixel_at(rect: egui::Rect, image: &RgbaImage, p: egui::Pos2) -> Option<(u32, u32)> {
+    let (w, h) = image.dimensions();
+    if w == 0 || h == 0 || rect.width() <= 0.0 || rect.height() <= 0.0 {
+        return None;
+    }
+    let sx = w as f32 / rect.width();
+    let sy = h as f32 / rect.height();
+    let x = (p.x - rect.min.x) * sx;
+    let y = (p.y - rect.min.y) * sy;
+    if x < 0.0 || y < 0.0 {
+        return None;
+    }
+    // Clampa na borda: o último pixel do overlay arredonda pra `w` e estouraria.
+    Some(((x.floor() as u32).min(w - 1), (y.floor() as u32).min(h - 1)))
+}
+
 #[cfg(windows)]
 mod imp {
     //! Retrato do desktop virtual pelo `xcap` (WGC no Windows).
@@ -466,5 +516,20 @@ mod tests {
         // Seleção fora do viewport (arraste pra fora) é cortada, não estoura.
         let clipped = crop_selection(full, &img, (egui::pos2(-50.0, -50.0), egui::pos2(500.0, 500.0))).expect("recorte cortado");
         assert_eq!(clipped.dimensions(), (200, 100));
+    }
+
+    /// O conta-gotas lê o pixel com o MESMO mapeamento por razão: metade do
+    /// tamanho desenhado = o dobro em px de imagem, e o canto direito/inferior
+    /// clampa no último pixel em vez de estourar.
+    #[test]
+    fn pixel_mapeia_por_razao_e_clampa() {
+        let img = RgbaImage::from_pixel(200, 100, image::Rgba([10, 20, 30, 255]));
+        let rect = egui::Rect::from_min_size(egui::pos2(5.0, 5.0), egui::vec2(100.0, 50.0));
+        assert_eq!(pixel_at(rect, &img, egui::pos2(5.0, 5.0)), Some((0, 0)));
+        assert_eq!(pixel_at(rect, &img, egui::pos2(15.0, 15.0)), Some((20, 20)));
+        assert_eq!(pixel_at(rect, &img, egui::pos2(105.0, 55.0)), Some((199, 99)));
+        // Fora do retrato (faixa de overscan/fora da tela) não lê nada.
+        assert_eq!(pixel_at(rect, &img, egui::pos2(4.0, 30.0)), None);
+        assert_eq!(pixel_at(rect, &img, egui::pos2(30.0, 4.0)), None);
     }
 }

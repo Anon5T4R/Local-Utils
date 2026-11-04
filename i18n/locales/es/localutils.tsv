@@ -165,3 +165,21 @@
 	{n} lines	{n} líneas
 	saved ✓	guardado ✓
 	Copy	Copiar
+	Convert	Convertir
+	Capture from screen	Capturar de la pantalla
+	Click to pick a color · Esc cancels	Haz clic para elegir el color · Esc cancela
+	Recent colors	Colores recientes
+	invalid color	color inválido
+	Hex	Hex
+	RGB	RGB
+	HSL	HSL
+	Drop images here	Arrastra imágenes aquí
+	Select files	Seleccionar archivos
+	Quality	Calidad
+	Applies to JPEG; WebP is saved lossless	Se aplica al JPEG; el WebP se guarda sin pérdida
+	saved as {name}	guardado como {name}
+	Could not convert	No se pudo convertir
+	not a supported image	no es una imagen compatible
+	waiting	en espera
+	Clear finished	Limpiar terminados
+	JXL is input only (no JXL encoder yet)	JXL solo como origen (todavía no hay codificador JXL)

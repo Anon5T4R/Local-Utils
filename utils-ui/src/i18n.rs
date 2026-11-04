@@ -241,6 +241,27 @@ pub enum Key {
     NotesSaved,
     // copiar um resultado de ferramenta
     CopyValue,
+    // aba Cor: seletor (hex/RGB/HSL), conta-gotas e recentes
+    TabPicker,
+    CaptureColor,
+    PickerHint,
+    RecentColors,
+    InvalidColor,
+    LabelHex,
+    LabelRgb,
+    LabelHsl,
+    // aba Converter: zona de soltar, fila e conversão
+    TabConvert,
+    DropImagesHint,
+    SelectFiles,
+    Quality,
+    QualityHint,
+    ConvertedTo,
+    ConvertFailed,
+    UnsupportedType,
+    ConvertWaiting,
+    ClearDone,
+    JxlInputOnly,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -417,6 +438,25 @@ const KEYS: &[Key] = &[
     Key::NotesLines,
     Key::NotesSaved,
     Key::CopyValue,
+    Key::TabPicker,
+    Key::CaptureColor,
+    Key::PickerHint,
+    Key::RecentColors,
+    Key::InvalidColor,
+    Key::LabelHex,
+    Key::LabelRgb,
+    Key::LabelHsl,
+    Key::TabConvert,
+    Key::DropImagesHint,
+    Key::SelectFiles,
+    Key::Quality,
+    Key::QualityHint,
+    Key::ConvertedTo,
+    Key::ConvertFailed,
+    Key::UnsupportedType,
+    Key::ConvertWaiting,
+    Key::ClearDone,
+    Key::JxlInputOnly,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -603,6 +643,30 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::NotesLines => "{n} lines",
         Key::NotesSaved => "saved ✓",
         Key::CopyValue => "Copy",
+        // Aba Cor: "Color" reaproveita a linha do editor da captura (a chave do
+        // catálogo é a STRING, não o enum).
+        Key::TabPicker => "Color",
+        Key::CaptureColor => "Capture from screen",
+        Key::PickerHint => "Click to pick a color · Esc cancels",
+        Key::RecentColors => "Recent colors",
+        Key::InvalidColor => "invalid color",
+        Key::LabelHex => "Hex",
+        Key::LabelRgb => "RGB",
+        Key::LabelHsl => "HSL",
+        // Aba Converter: o rótulo da aba e o botão de disparar são a MESMA
+        // palavra (uma linha só no catálogo, como o "Text" das Ferramentas).
+        Key::TabConvert => "Convert",
+        Key::DropImagesHint => "Drop images here",
+        Key::SelectFiles => "Select files",
+        Key::Quality => "Quality",
+        Key::QualityHint => "Applies to JPEG; WebP is saved lossless",
+        // `{name}` é preenchido pelo chamador (arquivo de saída).
+        Key::ConvertedTo => "saved as {name}",
+        Key::ConvertFailed => "Could not convert",
+        Key::UnsupportedType => "not a supported image",
+        Key::ConvertWaiting => "waiting",
+        Key::ClearDone => "Clear finished",
+        Key::JxlInputOnly => "JXL is input only (no JXL encoder yet)",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)
@@ -742,5 +806,32 @@ mod tests {
         // Marca e símbolos não traduzem.
         assert_eq!(t(Lang::Es, Key::DevUuid), "UUID v4");
         assert_eq!(t(Lang::Pt, Key::DevBase64), "Base64");
+    }
+
+    /// As chaves do v0.5 (aba Cor + aba Converter) têm linha nos TSVs: sem elas
+    /// as duas abas novas cairiam no inglês sem aviso.
+    #[test]
+    fn chaves_da_cor_e_do_conversor_saem_do_catalogo() {
+        // "Color" reaproveita a linha do editor da captura.
+        assert_eq!(t(Lang::Pt, Key::TabPicker), "Cor");
+        assert_eq!(t(Lang::Es, Key::TabPicker), "Color");
+        assert_eq!(t(Lang::Pt, Key::CaptureColor), "Capturar da tela");
+        assert_eq!(t(Lang::Pt, Key::RecentColors), "Cores recentes");
+        assert_eq!(t(Lang::Pt, Key::InvalidColor), "cor inválida");
+        assert_eq!(t(Lang::Es, Key::InvalidColor), "color inválido");
+        assert_eq!(t(Lang::Pt, Key::TabConvert), "Converter");
+        assert_eq!(t(Lang::Es, Key::TabConvert), "Convertir");
+        assert_eq!(t(Lang::Pt, Key::DropImagesHint), "Arraste imagens aqui");
+        assert_eq!(t(Lang::Pt, Key::SelectFiles), "Selecionar arquivos");
+        assert_eq!(t(Lang::Pt, Key::Quality), "Qualidade");
+        assert_eq!(t(Lang::Pt, Key::ConvertedTo).replace("{name}", "a.png"), "salvo em a.png");
+        assert_eq!(t(Lang::Pt, Key::ConvertFailed), "Não foi possível converter");
+        assert_eq!(t(Lang::Pt, Key::UnsupportedType), "não é uma imagem suportada");
+        assert_eq!(t(Lang::Pt, Key::ConvertWaiting), "aguardando");
+        assert_eq!(t(Lang::Pt, Key::ClearDone), "Limpar concluídos");
+        assert_eq!(t(Lang::Es, Key::DropImagesHint), "Arrastra imágenes aquí");
+        // Símbolos não traduzem.
+        assert_eq!(t(Lang::Pt, Key::LabelHex), "Hex");
+        assert_eq!(t(Lang::Pt, Key::LabelRgb), "RGB");
     }
 }

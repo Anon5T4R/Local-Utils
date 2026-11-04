@@ -11,11 +11,13 @@ mod autostart;
 mod capture;
 mod clipboard;
 mod clipboard_ui;
+mod convert;
 mod history;
 mod hotkey;
 mod ocr;
 mod options;
 mod paste;
+mod picker;
 mod popup;
 mod shot_editor;
 mod tools;
@@ -85,6 +87,9 @@ fn main() -> eframe::Result<()> {
     let cfg = config::load(app::APP_ID);
 
     let mut viewport = egui::ViewportBuilder::default().with_title("Local Utils").with_inner_size([980.0, 680.0]);
+    // Soltar arquivos na janela (aba Converter): o winit já liga por padrão no
+    // Windows, mas explicitamos — é requisito da aba, não um detalhe do SO.
+    viewport = viewport.with_drag_and_drop(true);
     // Ícone da janela (o .exe já cunha o mesmo no build.rs — Resources).
     if let Some(icon) = load_icon() {
         viewport = viewport.with_icon(icon);
