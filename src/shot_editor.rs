@@ -569,15 +569,16 @@ const MIN_VISIBLE: f32 = 48.0;
 /// deslocaria); maior, deixa no máximo (tamanho − MIN_VISIBLE) fora de cada
 /// lado — a imagem nunca some ("arrastar às cegas", feedback do João).
 fn clamp_pan(rect: egui::Rect, size: egui::Vec2, pan: &mut egui::Vec2) {
-    if size.x <= rect.width() {
-        pan.x = (rect.width() - size.x) / 2.0;
-    } else {
-        pan.x = pan.x.clamp(MIN_VISIBLE - size.x, rect.width() - MIN_VISIBLE);
-    }
-    if size.y <= rect.height() {
-        pan.y = (rect.height() - size.y) / 2.0;
-    } else {
-        pan.y = pan.y.clamp(MIN_VISIBLE - size.y, rect.height() - MIN_VISIBLE);
+    for (axis_rect, axis_size, pan_axis) in [(rect.width(), size.x, &mut pan.x), (rect.height(), size.y, &mut pan.y)] {
+        if axis_size <= axis_rect {
+            *pan_axis = (axis_rect - axis_size) / 2.0;
+        } else if 2.0 * MIN_VISIBLE >= axis_size.min(axis_rect) + axis_size.max(axis_rect) {
+            // Canvas/imagem anões: min > max entraria em pânico no `clamp`.
+            // Encosta na borda de trás (o começo da imagem fica visível).
+            *pan_axis = axis_rect - axis_size;
+        } else {
+            *pan_axis = pan_axis.clamp(MIN_VISIBLE - axis_size, axis_rect - MIN_VISIBLE);
+        }
     }
 }
 
@@ -1166,6 +1167,41 @@ fn blit(dst: &mut RgbaImage, src: &RgbaImage, x: u32, y: u32) {
 mod tests {
     use super::*;
     use image::Rgba;
+
+    /// Canvas menor que 2×MIN_VISIBLE não pânica no clamp (min > max): o eixo
+    /// encosta na borda de trás — paga se voltar o `clamp` cru.
+    #[test]
+    fn clamp_pan_canvas_anao_nao_panica() {
+        // Eixo X: canvas 30px, imagem 60px — min/max inverteriam no clamp.
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(30.0, 800.0));
+        let size = egui::vec2(60.0, 1920.0);
+        let mut pan = egui::vec2(-500.0, -500.0);
+        clamp_pan(rect, size, &mut pan);
+        assert_eq!(pan.x, rect.width() - size.x, "eixo anão encosta na borda de trás");
+        assert!(pan.y >= MIN_VISIBLE - size.y && pan.y <= rect.height() - MIN_VISIBLE, "eixo normal clampado: {pan:?}");
+
+        // Ambos os eixos anões de uma vez.
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(40.0, 40.0));
+        let size = egui::vec2(80.0, 60.0);
+        let mut pan = egui::vec2(999.0, -999.0);
+        clamp_pan(rect, size, &mut pan);
+        assert_eq!(pan, egui::vec2(rect.width() - size.x, rect.height() - size.y));
+    }
+
+    /// Imagem menor que o canvas centraliza; maior clampada deixa 48px visíveis.
+    #[test]
+    fn clamp_pan_centraliza_e_limita() {
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        // Menor: centraliza.
+        let mut pan = egui::vec2(-1000.0, 1000.0);
+        clamp_pan(rect, egui::vec2(200.0, 100.0), &mut pan);
+        assert_eq!(pan, egui::vec2((800.0 - 200.0) / 2.0, (600.0 - 100.0) / 2.0));
+        // Maior: arrasto absurdo é cortado nas duas direções.
+        let mut pan = egui::vec2(-9000.0, 9000.0);
+        clamp_pan(rect, egui::vec2(1920.0, 1080.0), &mut pan);
+        assert_eq!(pan.x, MIN_VISIBLE - 1920.0);
+        assert_eq!(pan.y, 600.0 - MIN_VISIBLE);
+    }
 
     fn solid(w: u32, h: u32) -> RgbaImage {
         RgbaImage::from_pixel(w, h, Rgba([10, 20, 30, 255]))
