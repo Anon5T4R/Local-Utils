@@ -105,18 +105,31 @@ mod imp {
         let handle = std::thread::Builder::new().name("utils-tray".into()).spawn(move || {
             // Janela oculta não roda frame: mostrar é aqui, no SO direto, e o
             // evento só avisa o app (que pede repaint/derruba o processo).
-            while let Ok(cmd) = cmd_rx.recv() {
-                match cmd {
-                    TrayCmd::Show => {
-                        winctl::show();
-                        let _ = app_tx.send(TrayCmd::Show);
+            // A mesma thread consome a flag "mostra-te" da segunda instância
+            // (single-instance, ver main): o frame não roda com a janela
+            // oculta, então não pode ser o app.
+            let show_flag = utils_ui::config::config_dir(crate::app::APP_ID).join("show.flag");
+            loop {
+                match cmd_rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                    Ok(cmd) => match cmd {
+                        TrayCmd::Show => {
+                            winctl::show();
+                            let _ = app_tx.send(TrayCmd::Show);
+                        }
+                        TrayCmd::Quit => {
+                            // Janela visível primeiro: o "Sair" roda no frame (que
+                            // só existe com a janela acordada), salva e encerra.
+                            winctl::show();
+                            let _ = app_tx.send(TrayCmd::Quit);
+                        }
+                    },
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        if std::fs::remove_file(&show_flag).is_ok() {
+                            winctl::show();
+                            let _ = app_tx.send(TrayCmd::Show);
+                        }
                     }
-                    TrayCmd::Quit => {
-                        // Janela visível primeiro: o "Sair" roda no frame (que
-                        // só existe com a janela acordada), salva e encerra.
-                        winctl::show();
-                        let _ = app_tx.send(TrayCmd::Quit);
-                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
         });

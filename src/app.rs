@@ -73,6 +73,9 @@ pub struct UtilsApp {
     tab: Tab,
     /// Último sequence number processado (dedupe de eventos colados).
     last_seq: u32,
+    /// Resultado de check de update manual ("Atualizado ✓ (versão)" / erro):
+    /// modal com OK — feedback que não passa despercebido no rodapé.
+    update_note: Option<String>,
     /// Verificação e instalação de atualização (craft_update): check no
     /// arranque/pedido, prompt egui próprio e self-update em thread própria.
     updater: craft_update::updater::Updater,
@@ -157,6 +160,7 @@ impl UtilsApp {
             status_since: 0,
             tab: Tab::Clipboard,
             last_seq: 0,
+            update_note: None,
             updater: craft_update::updater::Updater::new(&craft_update::suite::LOCALUTILS, CURRENT_VERSION),
             history,
             clip_ui: ClipboardUiState::default(),
@@ -478,16 +482,17 @@ impl eframe::App for UtilsApp {
         self.drain_ocr(ctx);
 
         // Updater (craft_update): drena o check/instalação pendente (o tick
-        // acorda a UI por si). Resultado de um check PEDIDO sai na barra de
-        // status do rodapé; release nova abre o prompt do updater.
+        // acorda a UI por si). Resultado de um check PEDIDO sai num MODAL
+        // (piscar 4s no rodapé era fácil de perder — "o botão não fez nada");
+        // release nova abre o prompt do updater.
         self.updater.tick(ctx);
         match self.updater.status().clone() {
             craft_update::updater::Status::UpToDate => {
-                self.set_status(i18n::t(self.cfg.lang, Key::UpToDate).to_string());
+                self.update_note = Some(format!("{} ({})", i18n::t(self.cfg.lang, Key::UpToDate), CURRENT_VERSION));
                 self.updater.dismiss_status();
             }
             craft_update::updater::Status::Failed(e) => {
-                self.set_status(format!("⚠ {e}"));
+                self.update_note = Some(format!("⚠ {e}"));
                 self.updater.dismiss_status();
             }
             _ => {}
@@ -602,6 +607,31 @@ impl eframe::App for UtilsApp {
         // update. O app aplica o que o diálogo devolveu.
         let opts = options::show(ctx, self.cfg.lang, &mut self.options);
         self.apply_options(ctx, opts);
+
+        // Nota do check manual (Atualizado ✓ / falha): modal simples com OK.
+        if let Some(note) = self.update_note.clone() {
+            let mut close = false;
+            egui::Window::new(i18n::t(self.cfg.lang, Key::CheckUpdates))
+                .id(egui::Id::unique("update-note"))
+                .frame(crate::ui::modal_frame(ctx))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .default_width(340.0)
+                .show(ctx, |ui| {
+                    ui.set_width(340.0);
+                    ui.label(&note);
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if crate::ui::pill(ui, i18n::t(self.cfg.lang, Key::Close), false).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            if close {
+                self.update_note = None;
+            }
+        }
 
         // Prompt de update (craft_update): por cima de tudo. "Atualizar e
         // reiniciar" pede o fechamento pelo caminho limpo (ViewportCommand::

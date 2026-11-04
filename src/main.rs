@@ -41,10 +41,37 @@ fn load_icon() -> Option<egui::IconData> {
 
 fn main() -> eframe::Result<()> {
     // Windows: o helper de update é uma CÓPIA deste programa iniciada com
-    // `--finish-update` (craft_update). Roda ANTES de tudo.
+    // `--finish-update` (craft_update). Roda ANTES de tudo — inclusive da
+    // guarda de instância única abaixo, que o helper não pode bloquear (ele
+    // espera o app sair e instala por conta própria).
     #[cfg(windows)]
     if let Some(result) = craft_update::self_update::finish(&craft_update::suite::LOCALUTILS, &std::env::args_os().skip(1).collect::<Vec<_>>()) {
         std::process::exit(i32::from(result.is_err()));
+    }
+
+    // ── single-instance (só Windows — é lá que o X esconde pra bandeja) ──
+    // Mesmo desenho do local-keys: lock de ARQUIVO (`File::try_lock` — o
+    // kernel libera sozinho em crash) + flag "mostra-te" consumida pela
+    // thread da bandeja. Sem isso, abrir pelo ícone de novo cria uma segunda
+    // instância (e segunda bandeja) em vez de acordar a que já existe.
+    #[cfg(windows)]
+    {
+        let dir = config::config_dir(app::APP_ID);
+        let _ = std::fs::create_dir_all(&dir);
+        let lock = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(dir.join("instance.lock"));
+        let segunda = match &lock {
+            Ok(f) => f.try_lock().is_err(),
+            // Sem conseguir abrir o lock: segue SEM guarda — melhor rodar
+            // sem single-instance do que não rodar.
+            Err(_) => false,
+        };
+        if segunda {
+            let _ = std::fs::write(dir.join("show.flag"), b"1");
+            return Ok(()); // a bandeja do primeiro atende a flag e mostra
+        }
+        if let Ok(f) = lock {
+            std::mem::forget(f); // lock vive até o processo morrer
+        }
     }
 
     let cfg = config::load(app::APP_ID);
