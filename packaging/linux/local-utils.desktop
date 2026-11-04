@@ -1,6 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Local Utils
+GenericName=Utilities
+Keywords=utils;utilities;tools;local;
 Exec=local-utils
 Icon=local-utils
 Categories=Utility;
