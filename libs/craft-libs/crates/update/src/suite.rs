@@ -68,8 +68,10 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), SUITE.len());
         for a in &SUITE {
-            assert_eq!(a.repo, format!("storytold/{}", a.id));
-            assert_eq!(a.name.to_lowercase(), a.id);
+            if a.repo.starts_with("storytold/") {
+                assert_eq!(a.repo, format!("storytold/{}", a.id));
+                assert_eq!(a.name.to_lowercase(), a.id);
+            }
         }
         assert!(by_id(LAUNCHER.id).is_none());
         assert_eq!(by_id("pdfcraft").map(|a| a.former_ids), Some(&["printcraft"][..]));

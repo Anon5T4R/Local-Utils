@@ -139,12 +139,16 @@ pub mod macos {
 
     use super::{App, InstallSource, Installed, version};
 
-    /// Where a `.app` might be: the system and the user's Applications folders.
+    /// Where a `.app` might be: the system and the user's Applications folders. Former names too:
+    /// a renamed app still finds the bundle the earlier name installed.
     pub fn candidates(app: &App) -> Vec<PathBuf> {
-        let bundle = format!("{}.app", app.name);
-        let mut out = vec![Path::new("/Applications").join(&bundle)];
-        if let Some(home) = crate::folders::home_dir() {
-            out.push(home.join("Applications").join(&bundle));
+        let mut out = Vec::new();
+        for name in app.names() {
+            let bundle = format!("{}.app", name);
+            out.push(Path::new("/Applications").join(&bundle));
+            if let Some(home) = crate::folders::home_dir() {
+                out.push(home.join("Applications").join(&bundle));
+            }
         }
         out
     }
@@ -236,9 +240,12 @@ pub mod windows {
     /// The folder the app's MSI remembers for its next upgrade, which is where it went when the
     /// launcher chose the folder.
     fn install_dir(app: &App) -> Option<PathBuf> {
+        // Former names too: a renamed app still finds the folder the earlier name recorded.
         [KEY_WOW64_64KEY, KEY_WOW64_32KEY].into_iter().find_map(|flags| {
-            let key = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(format!(r"SOFTWARE\{}", app.name), KEY_READ | flags).ok()?;
-            key.get_value::<String, _>("InstallDir").ok().filter(|d| !d.is_empty()).map(PathBuf::from)
+            app.names().find_map(|name| {
+                let key = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(format!(r"SOFTWARE\{}", name), KEY_READ | flags).ok()?;
+                key.get_value::<String, _>("InstallDir").ok().filter(|d| !d.is_empty()).map(PathBuf::from)
+            })
         })
     }
 
