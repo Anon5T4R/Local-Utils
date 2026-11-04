@@ -2,8 +2,9 @@
 //! um tema/idioma, opções e o check de updates; o título é o da titlebar do
 //! SO), fileira de abas do roadmap e rodapé de status. A aba Clipboard (a
 //! âncora do app) desenha o histórico em `clipboard_ui.rs`; a aba Screenshot
-//! edita a captura pendente (`shot_editor.rs`); as demais ainda são esqueleto e
-//! ganham conteúdo na sua versão do roadmap.
+//! edita a captura pendente (`shot_editor.rs`); Ferramentas traz as sub-abas
+//! (`tools.rs`) e Notas é o scratchpad (`tools_notes.rs`). Só a aba Sistema
+//! ainda é esqueleto.
 
 use std::sync::mpsc::Receiver;
 
@@ -22,6 +23,8 @@ use crate::ocr::{self, Ocr};
 use crate::options::{self, OptionsState};
 use crate::popup::{self, Popup};
 use crate::shot_editor::{self, Shot};
+use crate::tools::{self, ToolsState};
+use crate::tools_notes::{self, NotesState};
 use crate::transfer;
 use crate::tray::{self, TrayCmd};
 use crate::ui as kit;
@@ -113,6 +116,11 @@ pub struct UtilsApp {
     popup_paste: Option<u128>,
     /// OCR das imagens: thread de leitura + cache do último resultado.
     ocr: Ocr,
+    /// Aba Ferramentas (relógio, calculadora, unidades e dev) — o estado dos
+    /// quatro painéis sobrevive à troca de aba/sub-aba.
+    tools: ToolsState,
+    /// Aba Notas: só o marcador do autosave (o texto mora no config).
+    notes: NotesState,
     /// Fechar de VERDADE (pedido do updater): sem isto o X só esconde.
     #[cfg(windows)]
     allow_close: bool,
@@ -183,6 +191,8 @@ impl UtilsApp {
             shot: None,
             popup_paste: None,
             ocr: Ocr::default(),
+            tools: ToolsState::default(),
+            notes: NotesState::default(),
             #[cfg(windows)]
             allow_close: false,
         }
@@ -376,6 +386,15 @@ impl UtilsApp {
         }
     }
 
+    /// Grava o config (alarmes do relógio, texto do scratchpad e o que mais
+    /// mudou em memória). Erro vira status no rodapé: um autosave que falha em
+    /// silêncio perderia o texto do usuário.
+    fn save_config(&mut self) {
+        if let Err(e) = config::save(APP_ID, &self.cfg) {
+            self.set_status(format!("⚠ {e}"));
+        }
+    }
+
     /// Check de update no arranque (chamado antes do primeiro frame): achou
     /// release nova, o prompt do updater abre sozinho.
     pub fn check_at_start(&mut self, ctx: &egui::Context) {
@@ -502,6 +521,30 @@ impl eframe::App for UtilsApp {
         // OCR: resultado da thread de leitura (modal com o texto).
         self.drain_ocr(ctx);
 
+        // Relógio/alarmes da aba Ferramentas: o tique compara com `now_ms` a
+        // cada frame — a aba pode estar FECHADA e o alarme tem que tocar do
+        // mesmo jeito. O repaint de 500ms é o mesmo do monitor de clipboard;
+        // sem ele nada aqui acorda a UI.
+        let clock = clipboard_ui::Clock::now();
+        if let Some(message) = self.tools.tick(self.cfg.lang, &clock, &self.cfg.alarms) {
+            self.set_status(message);
+            ctx.request_repaint();
+        }
+        if self.tools.wants_repaint(&self.cfg.alarms) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+        }
+        // Autosave da aba Notas: o prazo do debounce corre fora da aba também
+        // (trocar de aba no meio da digitação não pode deixar o texto só na
+        // memória).
+        let now = history::now_ms();
+        if self.notes.due(now) {
+            self.save_config();
+            self.notes.saved();
+            self.set_status(i18n::t(self.cfg.lang, Key::NotesSaved).to_string());
+        } else if self.notes.pending() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        }
+
         // Updater (craft_update): drena o check/instalação pendente (o tick
         // acorda a UI por si). Resultado de um check PEDIDO sai num MODAL
         // (piscar 4s no rodapé era fácil de perder — "o botão não fez nada");
@@ -571,12 +614,22 @@ impl eframe::App for UtilsApp {
 
         let mut outcome = clipboard_ui::Outcome::default();
         let mut shot_status: Option<String> = None;
+        let mut tool_status: Option<String> = None;
+        let mut tool_cfg = false;
+        let mut tool_history = false;
         egui::CentralPanel::default().show(ui, |ui| {
             // Fileira de abas: `selectable_value` marca a ativa e troca o
-            // painel na hora (sem estado extra).
+            // painel na hora (sem estado extra). O rótulo de Ferramentas ganha
+            // o "(0:00)" com o timer zerado e um ⏰ que pisca enquanto um aviso
+            // do relógio está de pé — o alerta sobrevive à troca de aba.
+            let badge = self.tools.tab_badge();
             ui.horizontal(|ui| {
                 for tab in Tab::ALL {
-                    ui.selectable_value(&mut self.tab, tab, tab.label(self.cfg.lang));
+                    let label = match (&badge, tab) {
+                        (Some(badge), Tab::Tools) => format!("{} {badge}", tab.label(self.cfg.lang)),
+                        _ => tab.label(self.cfg.lang).to_string(),
+                    };
+                    ui.selectable_value(&mut self.tab, tab, label);
                 }
             });
             ui.separator();
@@ -590,7 +643,19 @@ impl eframe::App for UtilsApp {
                     let shot = shot_editor::show(ui, self.cfg.lang, &self.cfg.hotkey_screenshot, self.shot.as_mut());
                     shot_status = shot.status;
                 }
-                // As demais abas ainda são esqueleto: aviso traduzido no centro.
+                // Ferramentas: relógio, calculadora, conversor e dev tools.
+                Tab::Tools => {
+                    let tool_out = tools::show(ui, self.cfg.lang, &mut self.tools, &mut self.history, &mut self.cfg.alarms);
+                    tool_cfg |= tool_out.cfg_changed;
+                    tool_history |= tool_out.history_changed;
+                    tool_status = tool_out.status;
+                }
+                // Notas: o scratchpad multilinha (o texto mora no config; o
+                // autosave é do app, no topo do frame).
+                Tab::Scratchpad => {
+                    tools_notes::show(ui, self.cfg.lang, &mut self.notes, &mut self.cfg.notes);
+                }
+                // Aba Sistema ainda é esqueleto: aviso traduzido no centro.
                 _ => {
                     let _ = ui.centered_and_justified(|ui| {
                         ui.label(egui::RichText::new(i18n::t(self.cfg.lang, Key::TabWip)).weak());
@@ -612,6 +677,18 @@ impl eframe::App for UtilsApp {
         // Status do editor da captura (copiar/salvar). Vazio = diálogo
         // cancelado, nada pro rodapé.
         if let Some(status) = shot_status.filter(|s| !s.is_empty()) {
+            self.set_status(status);
+            ctx.request_repaint();
+        }
+        // Ferramentas: o "copiar" de um resultado cria entrada Text nova no
+        // histórico de clipboard; os alarmes editados vão pro config.
+        if tool_history {
+            self.save_history();
+        }
+        if tool_cfg {
+            self.save_config();
+        }
+        if let Some(status) = tool_status.filter(|s| !s.is_empty()) {
             self.set_status(status);
             ctx.request_repaint();
         }

@@ -168,6 +168,79 @@ pub enum Key {
     ShotText,
     ShotSaved,
     ShotSaveFailed,
+    // aba Ferramentas: sub-abas (Relógio, Calculadora, Unidades, Dev)
+    ToolsClock,
+    CalcTab,
+    UnitsTab,
+    DevTab,
+    // aba Ferramentas › relógio: timer, pomodoro, cronômetro e alarmes
+    ClockTimer,
+    ClockPomodoro,
+    ClockStopwatch,
+    ClockAlarms,
+    ClockStart,
+    ClockPause,
+    ClockStop,
+    ClockReset,
+    ClockTimerHint,
+    ClockTimeInvalid,
+    ClockTimeUp,
+    ClockPomodoroWork,
+    ClockPomodoroBreak,
+    ClockPomodoroWorkMin,
+    ClockPomodoroBreakMin,
+    ClockPomodoroCycles,
+    ClockAlarmTime,
+    ClockAlarmLabel,
+    ClockAlarmInvalid,
+    ClockAlarmRinging,
+    ClockAlarmsEmpty,
+    // aba Ferramentas › calculadora
+    CalcExpression,
+    CalcHistory,
+    CalcEmpty,
+    CalcSyntax,
+    CalcUnbalanced,
+    CalcDivZero,
+    CalcUnknownName,
+    CalcBadNumber,
+    CalcDomain,
+    // aba Ferramentas › conversor de unidades
+    UnitsLength,
+    UnitsMass,
+    UnitsTemperature,
+    UnitsData,
+    UnitsSpeed,
+    UnitsValue,
+    UnitsFrom,
+    UnitsTo,
+    UnitsInvalid,
+    // aba Ferramentas › dev (Base64, URL, hash, UUID, timestamp)
+    DevBase64,
+    DevUrl,
+    DevHash,
+    DevUuid,
+    DevUuidNote,
+    DevTimestamp,
+    DevInput,
+    DevEncode,
+    DevDecode,
+    DevBadInput,
+    DevBadUtf8,
+    DevBadIso,
+    DevIsoHint,
+    DevEpoch,
+    DevToEpoch,
+    DevToIso,
+    DevNow,
+    DevGenerate,
+    // aba Notas (scratchpad)
+    NotesHint,
+    NotesChars,
+    NotesLines,
+    NotesSaved,
+    // copiar um resultado de ferramenta
+    CopyValue,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -278,6 +351,72 @@ const KEYS: &[Key] = &[
     Key::ShotText,
     Key::ShotSaved,
     Key::ShotSaveFailed,
+    Key::ToolsClock,
+    Key::CalcTab,
+    Key::UnitsTab,
+    Key::DevTab,
+    Key::ClockTimer,
+    Key::ClockPomodoro,
+    Key::ClockStopwatch,
+    Key::ClockAlarms,
+    Key::ClockStart,
+    Key::ClockPause,
+    Key::ClockStop,
+    Key::ClockReset,
+    Key::ClockTimerHint,
+    Key::ClockTimeInvalid,
+    Key::ClockTimeUp,
+    Key::ClockPomodoroWork,
+    Key::ClockPomodoroBreak,
+    Key::ClockPomodoroWorkMin,
+    Key::ClockPomodoroBreakMin,
+    Key::ClockPomodoroCycles,
+    Key::ClockAlarmTime,
+    Key::ClockAlarmLabel,
+    Key::ClockAlarmInvalid,
+    Key::ClockAlarmRinging,
+    Key::ClockAlarmsEmpty,
+    Key::CalcExpression,
+    Key::CalcHistory,
+    Key::CalcEmpty,
+    Key::CalcSyntax,
+    Key::CalcUnbalanced,
+    Key::CalcDivZero,
+    Key::CalcUnknownName,
+    Key::CalcBadNumber,
+    Key::CalcDomain,
+    Key::UnitsLength,
+    Key::UnitsMass,
+    Key::UnitsTemperature,
+    Key::UnitsData,
+    Key::UnitsSpeed,
+    Key::UnitsValue,
+    Key::UnitsFrom,
+    Key::UnitsTo,
+    Key::UnitsInvalid,
+    Key::DevBase64,
+    Key::DevUrl,
+    Key::DevHash,
+    Key::DevUuid,
+    Key::DevUuidNote,
+    Key::DevTimestamp,
+    Key::DevInput,
+    Key::DevEncode,
+    Key::DevDecode,
+    Key::DevBadInput,
+    Key::DevBadUtf8,
+    Key::DevBadIso,
+    Key::DevIsoHint,
+    Key::DevEpoch,
+    Key::DevToEpoch,
+    Key::DevToIso,
+    Key::DevNow,
+    Key::DevGenerate,
+    Key::NotesHint,
+    Key::NotesChars,
+    Key::NotesLines,
+    Key::NotesSaved,
+    Key::CopyValue,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -397,6 +536,73 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::ShotText => "Text to insert",
         Key::ShotSaved => "screenshot saved",
         Key::ShotSaveFailed => "Could not save the screenshot",
+        Key::ToolsClock => "Clock",
+        Key::CalcTab => "Calculator",
+        Key::UnitsTab => "Units",
+        Key::DevTab => "Dev tools",
+        Key::ClockTimer => "Timer",
+        Key::ClockPomodoro => "Pomodoro",
+        Key::ClockStopwatch => "Stopwatch",
+        Key::ClockAlarms => "Alarms",
+        Key::ClockStart => "Start",
+        Key::ClockPause => "Pause",
+        Key::ClockStop => "Stop",
+        Key::ClockReset => "Reset",
+        Key::ClockTimerHint => "Time (hh:mm:ss)",
+        Key::ClockTimeInvalid => "invalid time — use hh:mm:ss",
+        Key::ClockTimeUp => "time's up",
+        Key::ClockPomodoroWork => "Work",
+        Key::ClockPomodoroBreak => "Break",
+        Key::ClockPomodoroWorkMin => "Work (min)",
+        Key::ClockPomodoroBreakMin => "Break (min)",
+        // `{n}` é preenchido pelo chamador (ciclos de trabalho do pomodoro).
+        Key::ClockPomodoroCycles => "{n} cycles",
+        Key::ClockAlarmTime => "Alarm (hh:mm)",
+        Key::ClockAlarmLabel => "Label",
+        Key::ClockAlarmInvalid => "invalid time — use hh:mm",
+        Key::ClockAlarmRinging => "alarm: {label}",
+        Key::ClockAlarmsEmpty => "No alarms yet",
+        Key::CalcExpression => "Expression",
+        Key::CalcHistory => "History",
+        Key::CalcEmpty => "No calculations yet",
+        Key::CalcSyntax => "syntax error",
+        Key::CalcUnbalanced => "missing parenthesis",
+        Key::CalcDivZero => "division by zero",
+        Key::CalcUnknownName => "unknown name: {name}",
+        Key::CalcBadNumber => "invalid number",
+        Key::CalcDomain => "invalid operation",
+        Key::UnitsLength => "Length",
+        Key::UnitsMass => "Mass",
+        Key::UnitsTemperature => "Temperature",
+        Key::UnitsData => "Data",
+        Key::UnitsSpeed => "Speed",
+        Key::UnitsValue => "Value",
+        Key::UnitsFrom => "From",
+        Key::UnitsTo => "To",
+        Key::UnitsInvalid => "enter a number",
+        Key::DevBase64 => "Base64",
+        Key::DevUrl => "URL",
+        Key::DevHash => "Hash",
+        Key::DevUuid => "UUID v4",
+        Key::DevUuidNote => "unique, but not cryptographic",
+        Key::DevTimestamp => "Timestamp",
+        Key::DevInput => "Input",
+        Key::DevEncode => "Encode",
+        Key::DevDecode => "Decode",
+        Key::DevBadInput => "invalid input",
+        Key::DevBadUtf8 => "not valid UTF-8",
+        Key::DevBadIso => "invalid date",
+        Key::DevIsoHint => "ISO date (e.g. 2026-11-04T14:30:00)",
+        Key::DevEpoch => "Unix epoch (seconds)",
+        Key::DevToEpoch => "To epoch",
+        Key::DevToIso => "To ISO",
+        Key::DevNow => "Now",
+        Key::DevGenerate => "Generate",
+        Key::NotesHint => "Type anything — it saves on its own",
+        Key::NotesChars => "{n} characters",
+        Key::NotesLines => "{n} lines",
+        Key::NotesSaved => "saved ✓",
+        Key::CopyValue => "Copy",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)
@@ -504,5 +710,37 @@ mod tests {
         assert_eq!(t(Lang::Es, Key::CaptureHint), "Pulse {hotkey} para capturar");
         assert_eq!(t(Lang::Es, Key::ToolBlur), "Desenfocar");
         assert_eq!(t(Lang::Es, Key::ShotSaveFailed), "No se pudo guardar la captura");
+    }
+
+    /// As chaves do v0.4 (aba Ferramentas + Notas) têm linha nos TSVs: sem elas
+    /// os painéis novos cairiam no inglês sem aviso.
+    #[test]
+    fn chaves_das_ferramentas_saem_do_catalogo() {
+        assert_eq!(t(Lang::Pt, Key::ToolsClock), "Relógio");
+        assert_eq!(t(Lang::Pt, Key::CalcTab), "Calculadora");
+        assert_eq!(t(Lang::Pt, Key::UnitsTab), "Unidades");
+        assert_eq!(t(Lang::Pt, Key::ClockStopwatch), "Cronômetro");
+        assert_eq!(t(Lang::Pt, Key::ClockTimeUp), "o tempo acabou");
+        assert_eq!(t(Lang::Pt, Key::ClockPomodoroCycles), "{n} ciclos");
+        assert_eq!(t(Lang::Pt, Key::ClockAlarmRinging), "alarme: {label}");
+        assert_eq!(t(Lang::Pt, Key::CalcDivZero), "divisão por zero");
+        assert_eq!(t(Lang::Pt, Key::CalcUnknownName), "nome desconhecido: {name}");
+        assert_eq!(t(Lang::Pt, Key::UnitsTemperature), "Temperatura");
+        assert_eq!(t(Lang::Pt, Key::UnitsFrom), "De");
+        assert_eq!(t(Lang::Pt, Key::DevUuid), "UUID v4");
+        assert_eq!(t(Lang::Pt, Key::DevIsoHint), "Data ISO (ex.: 2026-11-04T14:30:00)");
+        assert_eq!(t(Lang::Pt, Key::NotesChars), "{n} caracteres");
+        assert_eq!(t(Lang::Pt, Key::NotesSaved), "salvo ✓");
+        assert_eq!(t(Lang::Pt, Key::CopyValue), "Copiar");
+        assert_eq!(t(Lang::Es, Key::ToolsClock), "Reloj");
+        assert_eq!(t(Lang::Es, Key::ClockStopwatch), "Cronómetro");
+        assert_eq!(t(Lang::Es, Key::CalcDivZero), "división por cero");
+        assert_eq!(t(Lang::Es, Key::UnitsLength), "Longitud");
+        assert_eq!(t(Lang::Es, Key::UnitsTo), "A");
+        assert_eq!(t(Lang::Es, Key::NotesChars), "{n} caracteres");
+        assert_eq!(t(Lang::Es, Key::CopyValue), "Copiar");
+        // Marca e símbolos não traduzem.
+        assert_eq!(t(Lang::Es, Key::DevUuid), "UUID v4");
+        assert_eq!(t(Lang::Pt, Key::DevBase64), "Base64");
     }
 }

@@ -53,6 +53,12 @@ pub struct Config {
     /// principal (`popup.rs`). Vale na hora: quem prefere a janela inteira
     /// desmarca nas opções.
     pub popup_instead_of_window: bool,
+    /// Alarmes do relógio (aba Ferramentas): `(hh:mm, rótulo)`. Persistem entre
+    /// sessões — o painel do relógio só edita a lista e avisa o app, que grava.
+    pub alarms: Vec<(String, String)>,
+    /// Texto da aba Notas (scratchpad). Gravado pelo autosave debounced da
+    /// própria aba (1s depois da última tecla).
+    pub notes: String,
 }
 
 impl Default for Config {
@@ -65,6 +71,8 @@ impl Default for Config {
             autostart_ok: false,
             exclude: DEFAULT_EXCLUDE.iter().copied().map(str::to_string).collect(),
             popup_instead_of_window: true,
+            alarms: Vec::new(),
+            notes: String::new(),
         }
     }
 }
@@ -147,6 +155,8 @@ mod tests {
         assert!(!cfg.autostart_ok);
         assert_eq!(cfg.exclude.len(), DEFAULT_EXCLUDE.len());
         assert!(cfg.popup_instead_of_window, "o popup no cursor nasce ligado");
+        assert!(cfg.alarms.is_empty(), "alarmes nascem sem nenhum");
+        assert!(cfg.notes.is_empty(), "o scratchpad nasce vazio");
 
         std::fs::remove_dir_all(&dir).ok();
     }

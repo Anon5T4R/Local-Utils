@@ -351,6 +351,31 @@ fn recopy(history: &History, lang: Lang, id: u128) -> Option<String> {
     })
 }
 
+/// Copia um texto NOVO: cria a entrada `Text`, empilha no histórico e põe na
+/// área de transferência. É o caminho do "Copiar texto" do OCR e o que a aba
+/// Ferramentas usa (conta, conversão, hash, UUID): o resultado vira algo colável
+/// de novo, com entrada própria na lista.
+///
+/// Devolve `(o histórico mudou, status pronto pro rodapé)`.
+pub(crate) fn copy_new_text(history: &mut History, lang: Lang, text: &str) -> (bool, String) {
+    let entry = Entry {
+        id: crate::history::new_id(),
+        ts_ms: crate::history::now_ms(),
+        kind: Kind::Text,
+        pinned: false,
+        text: Some(text.to_string()),
+        files: None,
+        image_png: None,
+        thumb_png: None,
+    };
+    history.push(entry.clone());
+    let status = match clipboard::write_back(&entry) {
+        Ok(()) => i18n::t(lang, Key::CopiedOk).to_string(),
+        Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed)),
+    };
+    (true, status)
+}
+
 /// Move o foco na lista visível e devolve (índice na lista, id). Sem foco
 /// atual, ↓ começa no topo e ↑ no fim; nas pontas o foco fica parado (nada de
 /// dar a volta, que confunde).
@@ -600,6 +625,18 @@ impl Clock {
         Self { now_local_ms: utc.saturating_add(offset_ms), offset_ms }
     }
 
+    /// Agora no fuso local (epoch-ms). A aba Ferramentas (alarmes, timestamps)
+    /// usa o MESMO deslocamento dos carimbos da lista.
+    pub(crate) fn local_now_ms(&self) -> i64 {
+        self.now_local_ms
+    }
+
+    /// Deslocamento do fuso local (ms) — converter epoch ↔ hora civil fora dos
+    /// carimbos da lista.
+    pub(crate) fn offset_ms(&self) -> i64 {
+        self.offset_ms
+    }
+
     /// Carimbo relativo: agora / H:mm / ontem / dd/mm.
     pub(crate) fn stamp(&self, lang: Lang, ts_ms: u64) -> String {
         let ts = i64::try_from(ts_ms).unwrap_or(0).saturating_add(self.offset_ms);
@@ -625,8 +662,9 @@ fn days_of(ms: i64) -> i64 {
 
 /// Decomposição civil de um epoch-ms local: (ano, mês, dia, hora, minuto). O
 /// algoritmo `civil_from_days` é o do Hinnant (o mesmo que o chrono usa) — o
-/// app não puxa crate de data só pra isso.
-fn civil_parts(ms: i64) -> (i64, i64, i64, i64, i64) {
+/// app não puxa crate de data só pra isso. `pub(crate)`: a aba Ferramentas
+/// (alarmes e timestamps) decompõe com o mesmo algoritmo.
+pub(crate) fn civil_parts(ms: i64) -> (i64, i64, i64, i64, i64) {
     let days = days_of(ms);
     let rem = ms.rem_euclid(86_400_000);
     let (y, m, d) = civil_from_days(days);

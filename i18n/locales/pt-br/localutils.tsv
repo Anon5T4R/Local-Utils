@@ -99,3 +99,69 @@
 	Text to insert	Texto a inserir
 	screenshot saved	captura salva
 	Could not save the screenshot	Não foi possível salvar a captura
+	Clock	Relógio
+	Calculator	Calculadora
+	Units	Unidades
+	Dev tools	Ferramentas de dev
+	Timer	Temporizador
+	Pomodoro	Pomodoro
+	Stopwatch	Cronômetro
+	Alarms	Alarmes
+	Start	Iniciar
+	Pause	Pausar
+	Stop	Parar
+	Reset	Zerar
+	Time (hh:mm:ss)	Tempo (hh:mm:ss)
+	invalid time — use hh:mm:ss	hora inválida — use hh:mm:ss
+	time's up	o tempo acabou
+	Work	Trabalho
+	Break	Pausa
+	Work (min)	Trabalho (min)
+	Break (min)	Pausa (min)
+	{n} cycles	{n} ciclos
+	Alarm (hh:mm)	Alarme (hh:mm)
+	Label	Rótulo
+	invalid time — use hh:mm	hora inválida — use hh:mm
+	alarm: {label}	alarme: {label}
+	No alarms yet	Nenhum alarme ainda
+	Expression	Expressão
+	History	Histórico
+	No calculations yet	Nenhuma conta ainda
+	syntax error	erro de sintaxe
+	missing parenthesis	parêntese faltando
+	division by zero	divisão por zero
+	unknown name: {name}	nome desconhecido: {name}
+	invalid number	número inválido
+	invalid operation	operação inválida
+	Length	Comprimento
+	Mass	Massa
+	Temperature	Temperatura
+	Data	Dados
+	Speed	Velocidade
+	Value	Valor
+	From	De
+	To	Para
+	enter a number	digite um número
+	Base64	Base64
+	URL	URL
+	Hash	Hash
+	UUID v4	UUID v4
+	unique, but not cryptographic	único, mas não criptográfico
+	Timestamp	Data e hora
+	Input	Entrada
+	Encode	Codificar
+	Decode	Decodificar
+	invalid input	entrada inválida
+	not valid UTF-8	não é UTF-8 válido
+	invalid date	data inválida
+	ISO date (e.g. 2026-11-04T14:30:00)	Data ISO (ex.: 2026-11-04T14:30:00)
+	Unix epoch (seconds)	Epoch Unix (segundos)
+	To epoch	Para epoch
+	To ISO	Para ISO
+	Now	Agora
+	Generate	Gerar
+	Type anything — it saves on its own	Escreva qualquer coisa — salva sozinho
+	{n} characters	{n} caracteres
+	{n} lines	{n} linhas
+	saved ✓	salvo ✓
+	Copy	Copiar

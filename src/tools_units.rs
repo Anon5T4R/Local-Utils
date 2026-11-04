@@ -1,0 +1,334 @@
+//! Conversor de unidades da aba Ferramentas: comprimento, massa, temperatura,
+//! dados e velocidade.
+//!
+//! Cada unidade tem um FATOR pro padrão da categoria (m, g, byte, m/s) — a
+//! conversão é `valor * fator_origem / fator_destino`. Temperatura é a exceção
+//! (não é escala, é deslocamento): as três saem de/para Celsius por fórmula.
+//!
+//! Puro: nenhuma unidade depende do SO nem de locale. Os rótulos das unidades
+//! são SÍMBOLOS (`km`, `GiB`, `°C`) — iguais nos três idiomas de propósito, então
+//! não passam pelo catálogo i18n; só os nomes das CATEGORIAS passam.
+
+use utils_ui::i18n::{self, Key, Lang};
+
+use crate::clipboard_ui::copy_new_text;
+use crate::history::History;
+use crate::ui as kit;
+
+/// Uma unidade: identificador estável (usado pelo `convert`) e quanto ela vale
+/// no padrão da categoria.
+#[derive(Clone, Copy)]
+pub struct Unit {
+    pub id: &'static str,
+    /// Quanto 1 unidade vale na unidade-base da categoria (1.0 em temperatura:
+    /// lá a conta é por fórmula, não por fator).
+    pub factor: f64,
+}
+
+/// Categoria de unidades (as pills do topo).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    Length,
+    Mass,
+    Temperature,
+    Data,
+    Speed,
+}
+
+impl Category {
+    /// Todas as categorias, na ordem da barra.
+    pub const ALL: [Category; 5] = [Category::Length, Category::Mass, Category::Temperature, Category::Data, Category::Speed];
+
+    fn label_key(self) -> Key {
+        match self {
+            Category::Length => Key::UnitsLength,
+            Category::Mass => Key::UnitsMass,
+            Category::Temperature => Key::UnitsTemperature,
+            Category::Data => Key::UnitsData,
+            Category::Speed => Key::UnitsSpeed,
+        }
+    }
+
+    /// Unidades da categoria, na ordem em que aparecem nos combos.
+    fn units(self) -> &'static [Unit] {
+        match self {
+            Category::Length => &LENGTH,
+            Category::Mass => &MASS,
+            Category::Temperature => &TEMPERATURE,
+            Category::Data => &DATA,
+            Category::Speed => &SPEED,
+        }
+    }
+}
+
+/// Comprimento — base: metro.
+static LENGTH: [Unit; 8] = [
+    Unit { id: "mm", factor: 0.001 },
+    Unit { id: "cm", factor: 0.01 },
+    Unit { id: "m", factor: 1.0 },
+    Unit { id: "km", factor: 1_000.0 },
+    Unit { id: "in", factor: 0.0254 },
+    Unit { id: "ft", factor: 0.3048 },
+    Unit { id: "yd", factor: 0.9144 },
+    Unit { id: "mi", factor: 1_609.344 },
+];
+
+/// Massa — base: grama.
+static MASS: [Unit; 6] = [
+    Unit { id: "mg", factor: 0.001 },
+    Unit { id: "g", factor: 1.0 },
+    Unit { id: "kg", factor: 1_000.0 },
+    Unit { id: "t", factor: 1_000_000.0 },
+    Unit { id: "oz", factor: 28.349_523_125 },
+    Unit { id: "lb", factor: 453.592_37 },
+];
+
+/// Dados — base: byte. Decimal (KB/MB/GB) e binário (KiB/MiB/GiB) convivem:
+/// são unidades DIFERENTES, não duas formas de escrever a mesma.
+static DATA: [Unit; 7] = [
+    Unit { id: "B", factor: 1.0 },
+    Unit { id: "KB", factor: 1_000.0 },
+    Unit { id: "MB", factor: 1_000_000.0 },
+    Unit { id: "GB", factor: 1_000_000_000.0 },
+    Unit { id: "KiB", factor: 1_024.0 },
+    Unit { id: "MiB", factor: 1_048_576.0 },
+    Unit { id: "GiB", factor: 1_073_741_824.0 },
+];
+
+/// Velocidade — base: metro por segundo.
+static SPEED: [Unit; 4] = [
+    Unit { id: "m/s", factor: 1.0 },
+    Unit { id: "km/h", factor: 1.0 / 3.6 },
+    Unit { id: "mph", factor: 0.447_04 },
+    Unit { id: "kn", factor: 1_852.0 / 3_600.0 },
+];
+
+/// Temperatura — o fator não vale aqui; a conta é por fórmula (base: Celsius).
+static TEMPERATURE: [Unit; 3] = [Unit { id: "°C", factor: 1.0 }, Unit { id: "°F", factor: 1.0 }, Unit { id: "K", factor: 1.0 }];
+
+/// Acha a unidade pelo id dentro da categoria.
+fn find(cat: Category, id: &str) -> Option<Unit> {
+    cat.units().iter().copied().find(|unit| unit.id == id)
+}
+
+/// `valor` na unidade `from` convertido pra `to`. `None` = id desconhecido.
+pub fn convert(cat: Category, value: f64, from: &str, to: &str) -> Option<f64> {
+    if cat == Category::Temperature {
+        let celsius = to_celsius(value, from)?;
+        return from_celsius(celsius, to);
+    }
+    let from = find(cat, from)?;
+    let to = find(cat, to)?;
+    Some(value * from.factor / to.factor)
+}
+
+/// Qualquer escala de temperatura → Celsius.
+fn to_celsius(value: f64, unit: &str) -> Option<f64> {
+    match unit {
+        "°C" => Some(value),
+        "°F" => Some((value - 32.0) * 5.0 / 9.0),
+        "K" => Some(value - 273.15),
+        _ => None,
+    }
+}
+
+/// Celsius → qualquer escala de temperatura.
+fn from_celsius(celsius: f64, unit: &str) -> Option<f64> {
+    match unit {
+        "°C" => Some(celsius),
+        "°F" => Some(celsius * 9.0 / 5.0 + 32.0),
+        "K" => Some(celsius + 273.15),
+        _ => None,
+    }
+}
+
+/// Número legível: sem zeros à toa, notação científica pros extremos (converter
+/// 1 byte pra GiB cairia num "0" enganoso).
+pub fn fmt_value(value: f64) -> String {
+    if !value.is_finite() {
+        return "—".to_string();
+    }
+    if value == 0.0 {
+        return "0".to_string();
+    }
+    if value.abs() >= 1e15 || value.abs() < 1e-6 {
+        return format!("{value:.6e}");
+    }
+    let text = format!("{value:.6}");
+    text.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// Estado do conversor entre frames.
+pub struct UnitsState {
+    cat: Category,
+    /// O valor digitado (texto: o usuário pode estar no meio de "1.5").
+    value: String,
+    /// Índices nas unidades da categoria (mudar de categoria reseta os dois).
+    from: usize,
+    to: usize,
+}
+
+impl Default for UnitsState {
+    fn default() -> Self {
+        Self { cat: Category::Length, value: "1".to_string(), from: 2, to: 3 }
+    }
+}
+
+impl UnitsState {
+    /// Unidade de origem escolhida (id).
+    fn origin_id(&self) -> Option<&'static str> {
+        self.cat.units().get(self.from).map(|unit| unit.id)
+    }
+
+    /// Unidade de destino escolhida (id).
+    fn target_id(&self) -> Option<&'static str> {
+        self.cat.units().get(self.to).map(|unit| unit.id)
+    }
+
+    /// Resultado pronto pra tela: valor formatado ou a mensagem de erro.
+    fn result(&self) -> Result<String, Key> {
+        let value: f64 = self.value.trim().replace(',', ".").parse().map_err(|_| Key::UnitsInvalid)?;
+        let (Some(from), Some(to)) = (self.origin_id(), self.target_id()) else { return Err(Key::UnitsInvalid) };
+        let converted = convert(self.cat, value, from, to).ok_or(Key::UnitsInvalid)?;
+        Ok(fmt_value(converted))
+    }
+}
+
+/// O que o conversor devolve pro app.
+#[derive(Default)]
+pub struct Outcome {
+    pub history_changed: bool,
+    pub status: Option<String>,
+}
+
+/// Desenha o conversor. `texts` é o histórico de clipboard (o "copiar" cria uma
+/// entrada nova de texto, como no recopiar da aba Clipboard).
+pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut History) -> Outcome {
+    let mut out = Outcome::default();
+
+    ui.horizontal(|ui| {
+        for cat in Category::ALL {
+            if kit::pill(ui, i18n::t(lang, cat.label_key()), state.cat == cat).clicked() && state.cat != cat {
+                state.cat = cat;
+                // Os índices antigos podem não existir na categoria nova.
+                state.from = 0;
+                state.to = state.cat.units().len().saturating_sub(1);
+            }
+        }
+    });
+    ui.add_space(8.0);
+
+    ui.horizontal(|ui| {
+        ui.label(i18n::t(lang, Key::UnitsValue));
+        ui.add(kit::line(&mut state.value).desired_width(140.0));
+    });
+    ui.add_space(6.0);
+
+    let units = state.cat.units();
+    ui.horizontal(|ui| {
+        // "De" → "Para": dois combos com a MESMA lista de unidades.
+        ui.label(i18n::t(lang, Key::UnitsFrom));
+        egui::ComboBox::from_id_salt("units-from").selected_text(units.get(state.from).map_or("", |unit| unit.id)).width(90.0).show_ui(ui, |ui| {
+            for (i, unit) in units.iter().enumerate() {
+                ui.selectable_value(&mut state.from, i, unit.id);
+            }
+        });
+        ui.label(i18n::t(lang, Key::UnitsTo));
+        egui::ComboBox::from_id_salt("units-to").selected_text(units.get(state.to).map_or("", |unit| unit.id)).width(90.0).show_ui(ui, |ui| {
+            for (i, unit) in units.iter().enumerate() {
+                ui.selectable_value(&mut state.to, i, unit.id);
+            }
+        });
+    });
+    ui.add_space(10.0);
+
+    match state.result() {
+        Ok(text) => {
+            let skin = crate::ui::Skin::of(ui);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(&text).size(26.0).strong().color(skin.text));
+                if kit::pill(ui, i18n::t(lang, Key::CopyValue), false).clicked() {
+                    let (changed, status) = copy_new_text(texts, lang, &text);
+                    out.history_changed |= changed;
+                    out.status = Some(status);
+                }
+            });
+        }
+        Err(key) => {
+            let skin = crate::ui::Skin::of(ui);
+            ui.label(egui::RichText::new(format!("⚠ {}", i18n::t(lang, key))).color(skin.danger));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn perto(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    /// Converte e confere com tolerância (o inverso de uma divisão nunca é
+    /// exato em f64).
+    fn check(cat: Category, value: f64, from: &str, to: &str, want: f64) {
+        match convert(cat, value, from, to) {
+            Some(got) if perto(got, want) => {}
+            other => panic!("{value} {from}→{to}: esperava {want}, veio {other:?}"),
+        }
+    }
+
+    #[test]
+    fn temperatura_nas_duas_direcoes() {
+        check(Category::Temperature, 100.0, "°C", "°F", 212.0);
+        check(Category::Temperature, 32.0, "°F", "°C", 0.0);
+        check(Category::Temperature, 0.0, "°C", "K", 273.15);
+        check(Category::Temperature, 300.0, "K", "°C", 26.85);
+        check(Category::Temperature, 98.6, "°F", "K", 310.15);
+        check(Category::Temperature, -40.0, "°C", "°F", -40.0);
+        // Ida e volta fecha no valor original.
+        check(Category::Temperature, 37.0, "°C", "°C", 37.0);
+    }
+
+    #[test]
+    fn dados_decimal_e_binario_sao_unidades_diferentes() {
+        check(Category::Data, 1.0, "MB", "KB", 1_000.0);
+        check(Category::Data, 1.0, "GB", "MB", 1_000.0);
+        check(Category::Data, 1.0, "GiB", "MB", 1_073.741_824);
+        check(Category::Data, 1.0, "GiB", "KiB", 1_048_576.0);
+        check(Category::Data, 1.0, "MiB", "B", 1_048_576.0);
+        check(Category::Data, 1.0, "KiB", "KB", 1.024);
+    }
+
+    #[test]
+    fn comprimento_massa_e_velocidade() {
+        check(Category::Length, 1.0, "km", "m", 1_000.0);
+        check(Category::Length, 1.0, "mi", "m", 1_609.344);
+        check(Category::Length, 12.0, "in", "cm", 30.48);
+        check(Category::Mass, 1.0, "kg", "g", 1_000.0);
+        check(Category::Mass, 1.0, "lb", "g", 453.592_37);
+        check(Category::Speed, 1.0, "km/h", "m/s", 0.277_777_777);
+        check(Category::Speed, 1.0, "kn", "km/h", 1.852);
+    }
+
+    #[test]
+    fn unidade_desconhecida_nao_converte() {
+        assert_eq!(convert(Category::Length, 1.0, "km", "banana"), None);
+        assert_eq!(convert(Category::Length, 1.0, "banana", "m"), None);
+        // Unidade de OUTRA categoria também não converte.
+        assert_eq!(convert(Category::Length, 1.0, "km", "kg"), None);
+        assert_eq!(convert(Category::Temperature, 1.0, "°C", "°R"), None);
+    }
+
+    #[test]
+    fn formatacao_do_valor() {
+        assert_eq!(fmt_value(1_000.0), "1000");
+        assert_eq!(fmt_value(0.5), "0.5");
+        assert_eq!(fmt_value(1.5), "1.5");
+        assert_eq!(fmt_value(-40.0), "-40");
+        assert_eq!(fmt_value(0.0), "0");
+        // 1 byte em GiB: decimal não serve (viraria "0").
+        assert!(fmt_value(1.0 / 1_073_741_824.0).contains('e'), "valor minúsculo sai em científica");
+    }
+}
