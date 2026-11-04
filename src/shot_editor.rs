@@ -561,6 +561,26 @@ fn swatch(ui: &mut egui::Ui, cor: egui::Color32, selected: bool) -> egui::Respon
 }
 
 /// Canvas: prévia com pan/zoom e o desenho das anotações.
+/// Quanto da imagem (em px de tela) fica sempre visível por eixo: o pan pode
+/// levar a imagem pro canto, nunca pra fora.
+const MIN_VISIBLE: f32 = 48.0;
+
+/// Limita o pan: com a imagem menor que o canvas, centraliza (pan ali só
+/// deslocaria); maior, deixa no máximo (tamanho − MIN_VISIBLE) fora de cada
+/// lado — a imagem nunca some ("arrastar às cegas", feedback do João).
+fn clamp_pan(rect: egui::Rect, size: egui::Vec2, pan: &mut egui::Vec2) {
+    if size.x <= rect.width() {
+        pan.x = (rect.width() - size.x) / 2.0;
+    } else {
+        pan.x = pan.x.clamp(MIN_VISIBLE - size.x, rect.width() - MIN_VISIBLE);
+    }
+    if size.y <= rect.height() {
+        pan.y = (rect.height() - size.y) / 2.0;
+    } else {
+        pan.y = pan.y.clamp(MIN_VISIBLE - size.y, rect.height() - MIN_VISIBLE);
+    }
+}
+
 fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
     let avail = ui.available_size();
     if avail.x < 1.0 || avail.y < 1.0 {
@@ -614,6 +634,12 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
 
     let (base_scale, base_off) = fit_base(shot);
     let scale = base_scale * shot.zoom;
+    if !shot.fit {
+        // Pan limitado: a imagem nunca some do canvas (feedback do João —
+        // arrastar "meio às cegas" pra achar a imagem de novo era ruim). Com
+        // a imagem menor que o canvas, centraliza.
+        clamp_pan(rect, size * scale, &mut shot.pan);
+    }
     let dest = egui::Rect::from_min_size(rect.min + base_off + shot.pan, size * scale);
     // Origem do recorte em px da base: a prévia JÁ está recortada, então
     // devolver a coordenada da base exige somar de volta o canto do crop.
