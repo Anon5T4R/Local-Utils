@@ -42,10 +42,22 @@ const HISTORY: usize = 60;
 const TOP_N: usize = 12;
 /// Interfaces de rede listadas (as de maior tráfego no último segundo).
 const INTERFACES: usize = 4;
+/// Largura máxima da coluna de conteúdo (o app roda maximizado; 1900px de
+/// linha não se lê). O grid de cards vive DENTRO desse teto.
+const CONTENT_W: f32 = 1_200.0;
+/// Vão entre os cards da grade.
+const GUTTER: f32 = 12.0;
+/// Largura mínima da coluna para a grade abrir DUAS colunas. Abaixo disso os
+/// cards empilham: a janela sem maximizar mostra menos card por linha, mas
+/// nenhum corta.
+const TWO_COL_MIN_W: f32 = 900.0;
 /// Alturas do desenho (px).
-const SPARK_H: f32 = 34.0;
-const BAR_H: f32 = 14.0;
-const CORE_BAR_H: f32 = 26.0;
+const SPARK_H: f32 = 36.0;
+/// Chip de um núcleo (o par "C0 12%" com a barrinha interna).
+const CHIP_W: f32 = 78.0;
+const CHIP_H: f32 = 42.0;
+/// Altura de uma linha da lista de processos.
+const PROC_H: f32 = 40.0;
 /// Faixa aceita de temperatura (°C). Fora dela o valor é lixo de sensor (o WMI
 /// devolve zero/negativo em algumas máquinas) e não entra na sessão.
 // Faixa plausível de temperatura em operação (sensor de CPU/GPU real não
@@ -206,7 +218,10 @@ impl Live {
                 temps.record(hottest);
             }
         }
-        self.cpu_hist.push(self.sys.global_cpu_usage());
+        // `max(0.0)`: a PRIMEIRA leitura do sysinfo pode sair NEGATIVA (a janela
+        // de amostragem ainda não tem delta; o uso sai -5%) e a UI mostrava
+        // "-5%". Histórico, barras e sparkline herdam o clamp daqui.
+        self.cpu_hist.push(usage_non_negative(self.sys.global_cpu_usage()));
         let (down, up) = net_deltas(self.nets.as_ref());
         self.down_hist.push(down);
         self.up_hist.push(up);
@@ -318,6 +333,13 @@ fn disk_kind_label(kind: DiskKind) -> Option<&'static str> {
     }
 }
 
+/// Uso de CPU nunca é negativo na tela. A primeira leitura do `sysinfo` (e a de
+/// um processo recém-visto) pode voltar negativa por falta de janela de
+/// amostragem — artefato de medição, não uso real.
+fn usage_non_negative(usage: f32) -> f32 {
+    usage.max(0.0)
+}
+
 // ── formatação (pura, testada) ───────────────────────────────────────────
 
 /// Unidades de base 1024, do byte ao tebibyte.
@@ -407,38 +429,302 @@ pub struct Outcome {
     pub status: Option<String>,
 }
 
-/// Título de uma seção.
-fn heading(ui: &mut egui::Ui, text: &str) {
-    ui.label(egui::RichText::new(text).strong());
+/// Cabeçalho do card: rótulo e valor na MESMA linha, lado a lado. O valor
+/// nunca vai pro canto oposto da janela — o card é a unidade de leitura.
+fn card_head(ui: &mut egui::Ui, title: &str, value: &str, ink: egui::Color32) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(title).strong());
+        if !value.is_empty() {
+            ui.label(egui::RichText::new(value).strong().color(ink));
+        }
+    });
 }
 
-/// Barra de progresso com título (esquerda) e valor (direita) na linha de cima.
-fn meter(ui: &mut egui::Ui, title: &str, value: &str, frac: f32, color: egui::Color32, skin: Skin) {
+/// Linha de medida: rótulo + valor juntos e a barra do card embaixo.
+fn meter_row(ui: &mut egui::Ui, label: &str, value: &str, frac: f32, color: egui::Color32) {
+    let skin = Skin::of(ui);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(title).small().weak());
+        ui.label(egui::RichText::new(label).small().color(skin.muted));
+        ui.label(egui::RichText::new(value).small());
+    });
+    ui.add_space(3.0);
+    kit::progress(ui, frac, color);
+}
+
+/// Quantos chips de núcleo cabem numa linha do card (o espaçamento entre eles
+/// é o `item_spacing.x` do kit, 6px).
+fn chip_capacity(inner_w: f32) -> usize {
+    (((inner_w + 6.0) / (CHIP_W + 6.0)).floor() as usize).max(1)
+}
+
+/// Duas células da grade lado a lado ou empilhadas, conforme a largura. Nas
+/// duas colunas as células da MESMA linha compartilham `min_h`; empilhadas a
+/// altura mínima é descartada (cada card cresce o que precisa).
+fn card_pair(ui: &mut egui::Ui, two_cols: bool, card_w: f32, min_h: f32, left: impl FnOnce(&mut egui::Ui), right: impl FnOnce(&mut egui::Ui)) {
+    if two_cols {
+        ui.horizontal_top(|ui| {
+            kit::card_h(ui, card_w, min_h, left);
+            ui.add_space(GUTTER);
+            kit::card_h(ui, card_w, min_h, right);
+        });
+    } else {
+        kit::card(ui, card_w, left);
+        ui.add_space(GUTTER);
+        kit::card(ui, card_w, right);
+    }
+}
+
+/// Núcleos como chips com wrap: nunca corta na borda do card.
+fn core_chips(ui: &mut egui::Ui, usages: &[f32]) {
+    let skin = Skin::of(ui);
+    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+    ui.horizontal_wrapped(|ui| {
+        for (index, usage) in usages.iter().enumerate() {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(CHIP_W, CHIP_H), egui::Sense::hover());
+            paint_core_chip(ui, rect, index, *usage, skin);
+        }
+    });
+}
+
+/// Um chip de núcleo: "C0" e o percentual em cima, barrinha interna embaixo.
+fn paint_core_chip(ui: &egui::Ui, rect: egui::Rect, index: usize, usage: f32, skin: Skin) {
+    // Mesmo clamp da leitura global: núcleo recém-medido pode vir negativo.
+    let usage = usage_non_negative(usage);
+    let painter = ui.painter();
+    painter.rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
+    let font = egui::FontId::proportional(10.0);
+    painter.text(egui::pos2(rect.left() + 7.0, rect.top() + 5.0), egui::Align2::LEFT_TOP, format!("C{index}"), font.clone(), skin.muted);
+    painter.text(egui::pos2(rect.right() - 7.0, rect.top() + 5.0), egui::Align2::RIGHT_TOP, format!("{usage:.0}%"), font, skin.text);
+    let track = egui::Rect::from_min_size(egui::pos2(rect.left() + 7.0, rect.bottom() - 10.0), egui::vec2(rect.width() - 14.0, 4.0));
+    painter.rect_filled(track, egui::CornerRadius::same(2), skin.track);
+    let frac = (usage / 100.0).clamp(0.0, 1.0);
+    if frac > 0.0 {
+        let filled = egui::Rect::from_min_size(track.min, egui::vec2(track.width() * frac, track.height()));
+        painter.rect_filled(filled, egui::CornerRadius::same(2), skin.accent);
+    }
+}
+
+/// Componente mais quente da máquina (as zonas variam junto; a média diluiria).
+fn hottest(comps: &Components) -> Option<f32> {
+    comps.into_iter().filter_map(|component| component.temperature()).reduce(f32::max)
+}
+
+/// Card do CPU: cabeçalho com o uso, sparkline do último minuto e os núcleos.
+fn cpu_card(ui: &mut egui::Ui, lang: Lang, live: &Live, cores: &[f32]) {
+    let skin = Skin::of(ui);
+    let cpu = usage_non_negative(live.sys.global_cpu_usage());
+    card_head(ui, i18n::t(lang, Key::SysCpu), &format!("· {cpu:.0}%"), skin.accent);
+    ui.add_space(6.0);
+    sparkline(ui, &live.cpu_hist, 100.0, skin.accent);
+    ui.add_space(10.0);
+    ui.label(egui::RichText::new(i18n::t(lang, Key::SysPerCore)).small().color(skin.muted));
+    ui.add_space(4.0);
+    core_chips(ui, cores);
+}
+
+/// Card da memória: RAM e swap com rótulo e valor juntos, barra do card.
+fn memory_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
+    let skin = Skin::of(ui);
+    let total = live.sys.total_memory();
+    let used = live.sys.used_memory();
+    let frac = if total == 0 { 0.0 } else { used as f32 / total as f32 };
+    card_head(ui, i18n::t(lang, Key::SysMemory), &format!("· {:.0}%", frac * 100.0), skin.accent);
+    ui.add_space(8.0);
+    meter_row(ui, "RAM", &format!("{} / {}", format_bytes(used), format_bytes(total)), frac, skin.accent);
+    ui.add_space(12.0);
+    // Sem arquivo de paginação o swap é 0/0: mostra "0 B / 0 B" (não é erro).
+    let total_swap = live.sys.total_swap();
+    let used_swap = live.sys.used_swap();
+    let swap_frac = if total_swap == 0 { 0.0 } else { used_swap as f32 / total_swap as f32 };
+    meter_row(ui, i18n::t(lang, Key::SysSwap), &format!("{} / {}", format_bytes(used_swap), format_bytes(total_swap)), swap_frac, skin.muted);
+}
+
+/// Card dos discos: um bloco por volume (nome · tipo, uso e barra).
+fn disks_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
+    let skin = Skin::of(ui);
+    let mut any = false;
+    card_head(ui, i18n::t(lang, Key::SysDisks), "", skin.text);
+    ui.add_space(8.0);
+    if let Some(disks) = live.disks.as_ref() {
+        for disk in disks {
+            let total = disk.total_space();
+            if total == 0 {
+                continue;
+            }
+            any = true;
+            let used = total.saturating_sub(disk.available_space());
+            let kind = disk_kind_label(disk.kind()).unwrap_or_else(|| i18n::t(lang, Key::SysUnknown));
+            let name = format!("{} · {kind}", disk.mount_point().display());
+            let value = format!("{} / {}", format_bytes(used), format_bytes(total));
+            meter_row(ui, &name, &value, used as f32 / total as f32, skin.accent);
+            ui.add_space(10.0);
+        }
+    }
+    if !any {
+        ui.label(egui::RichText::new(i18n::t(lang, Key::SysUnavailable)).small().color(skin.muted));
+    }
+}
+
+/// Card da rede: taxa total no cabeçalho, sparkline do download e as
+/// interfaces (nome truncado, com o nome inteiro no tooltip).
+fn network_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
+    let skin = Skin::of(ui);
+    let (down, up) = net_deltas(live.nets.as_ref());
+    card_head(ui, i18n::t(lang, Key::SysNetwork), &format!("↓ {} · ↑ {}", format_rate(down as u64), format_rate(up as u64)), skin.accent);
+    ui.add_space(6.0);
+    sparkline(ui, &live.down_hist, 0.0, skin.accent);
+    ui.add_space(8.0);
+    if let Some(nets) = live.nets.as_ref() {
+        let mut rows: Vec<(String, u64, u64)> = nets
+            .into_iter()
+            .filter(|(_name, data)| {
+                data.operational_state() == InterfaceOperationalState::Up && (data.total_received() > 0 || data.total_transmitted() > 0)
+            })
+            .map(|(name, data)| (name.to_string_lossy().into_owned(), data.received(), data.transmitted()))
+            .collect();
+        rows.sort_by_key(|(_, down, up)| std::cmp::Reverse(down.saturating_add(*up)));
+        for (name, down, up) in rows.iter().take(INTERFACES) {
+            adapter_row(ui, name, *down, *up, skin);
+        }
+    }
+}
+
+/// Uma interface: nome truncado (tooltip com o nome inteiro) e os dois badges.
+fn adapter_row(ui: &mut egui::Ui, name: &str, down: u64, up: u64, skin: Skin) {
+    ui.horizontal(|ui| {
+        let name_w = (ui.available_width() - 150.0).max(60.0);
+        let label = egui::Label::new(egui::RichText::new(name).small().color(skin.muted)).truncate();
+        ui.add_sized(egui::vec2(name_w, 18.0), label).on_hover_text(name);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(value).small());
+            kit::badge(ui, &format!("↓ {}", format_rate(down)), skin.text);
+            ui.add_space(4.0);
+            kit::badge(ui, &format!("↑ {}", format_rate(up)), skin.text);
         });
     });
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), BAR_H), egui::Sense::hover());
-    ui.painter().rect(rect, egui::CornerRadius::same(4), skin.hover, egui::Stroke::new(1.0_f32, skin.border), egui::StrokeKind::Inside);
-    let frac = frac.clamp(0.0, 1.0);
-    if frac > 0.0 {
-        let filled = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width() * frac, rect.height()));
-        ui.painter().rect_filled(filled, egui::CornerRadius::same(4), color);
+}
+
+/// Card "Energia & sistema": bateria como pill (SEM barra), uptime e
+/// temperaturas. As zonas térmicas detalhadas ficam no tooltip.
+fn energy_card(ui: &mut egui::Ui, lang: Lang, live: &Live, average: Option<f32>, max: Option<f32>, last: Option<f32>) {
+    let skin = Skin::of(ui);
+    card_head(ui, i18n::t(lang, Key::SysEnergy), "", skin.text);
+    ui.add_space(8.0);
+    ui.horizontal_wrapped(|ui| {
+        match battery() {
+            Some(info) => {
+                let state_key = if info.charging {
+                    Key::SysCharging
+                } else if info.plugged {
+                    Key::SysPlugged
+                } else {
+                    Key::SysOnBattery
+                };
+                // Bateria fraca fora da tomada é o único caso de alerta.
+                let ink = if info.percent <= 20 && !info.plugged { skin.danger } else { skin.accent };
+                kit::badge(ui, &format!("⚡ {}% · {}", info.percent, i18n::t(lang, state_key)), ink);
+            }
+            None => {
+                kit::badge(ui, i18n::t(lang, Key::SysNoBattery), skin.muted);
+            }
+        }
+        ui.add_space(16.0);
+        ui.label(egui::RichText::new(i18n::t(lang, Key::SysUptime)).small().color(skin.muted));
+        let uptime = System::uptime().map(format_uptime).unwrap_or_else(|_| i18n::t(lang, Key::SysUnavailable).to_string());
+        ui.label(egui::RichText::new(uptime).small());
+        ui.add_space(16.0);
+        ui.label(egui::RichText::new(i18n::t(lang, Key::SysTemperatures)).small().color(skin.muted));
+        // Se o WMI parar de responder depois de ter funcionado, a última
+        // leitura da sessão continua na tela em vez de "indisponível".
+        let current = live.comps.as_ref().and_then(hottest).or(last);
+        let text = match current {
+            Some(value) => format!("{value:.0} °C"),
+            None => i18n::t(lang, Key::SysUnavailable).to_string(),
+        };
+        let resp = ui.label(egui::RichText::new(text).small());
+        let mut detail = String::new();
+        if let Some(comps) = live.comps.as_ref() {
+            for component in comps {
+                if let Some(value) = component.temperature() {
+                    detail.push_str(&format!("{} · {value:.0} °C\n", component.label()));
+                }
+            }
+        }
+        let average = average.map_or_else(|| "—".to_string(), |value| format!("{value:.0} °C"));
+        let maximum = max.map_or_else(|| "—".to_string(), |value| format!("{value:.0} °C"));
+        detail.push_str(&format!("{}: {average}   {}: {maximum}", i18n::t(lang, Key::SysAvg), i18n::t(lang, Key::SysMax)));
+        resp.on_hover_text(detail);
+    });
+}
+
+/// Card dos top processos, no padrão da aba Clipboard: nome com tooltip,
+/// CPU/RAM como badges, × só no hover e hairline entre as linhas.
+fn processes_card(ui: &mut egui::Ui, lang: Lang, live: &Live, sort: SortBy, sort_choice: &mut Option<SortBy>, kill: &mut Option<(u32, String)>) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(i18n::t(lang, Key::SysProcesses)).strong());
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if kit::segmented(ui, "RAM", sort == SortBy::Mem).clicked() {
+                *sort_choice = Some(SortBy::Mem);
+            }
+            if kit::segmented(ui, "CPU", sort == SortBy::Cpu).clicked() {
+                *sort_choice = Some(SortBy::Cpu);
+            }
+        });
+    });
+    ui.add_space(6.0);
+    kit::hairline(ui);
+    for row in &live.procs {
+        process_row(ui, lang, row, kill);
+        kit::hairline(ui);
     }
+}
+
+/// Uma linha da lista de processos.
+fn process_row(ui: &mut egui::Ui, lang: Lang, row: &ProcRow, kill: &mut Option<(u32, String)>) {
+    let skin = Skin::of(ui);
+    let width = ui.available_width().max(1.0);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, PROC_H), egui::Sense::hover());
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
+    }
+    let inner = rect.shrink2(egui::vec2(8.0, 0.0));
+    let mut row_ui = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    // Nome truncado; o tooltip devolve o nome inteiro e o PID.
+    let name_w = (inner.width() - 190.0).max(80.0);
+    let label = egui::Label::new(egui::RichText::new(&row.name).color(skin.text)).truncate();
+    row_ui.add_sized(egui::vec2(name_w, 20.0), label).on_hover_text(format!("{} · PID {}", row.name, row.pid));
+    row_ui.add_space(6.0);
+    row_ui.label(egui::RichText::new(format!("#{}", row.pid)).small().color(skin.muted));
+    row_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // Ação destrutiva só aparece com o mouse em cima da linha. "×" (U+00D7)
+        // e tinta do TEMA: o "✕" do v0.6 não existe nas fontes e o vermelho
+        // ficava reservado pro modal de confirmação.
+        // Sem hover-dependência: o botão bloqueia o hover da linha e "sumia"
+        // sob o próprio ponteiro (mesmo bug pago nos alarmes).
+        if kit::ghost_action(ui, "×").on_hover_text(i18n::t(lang, Key::SysKill)).clicked() {
+            *kill = Some((row.pid, row.name.clone()));
+        }
+        kit::badge(ui, &format_bytes(row.mem), skin.muted);
+        ui.add_space(4.0);
+        let cpu = usage_non_negative(row.cpu);
+        let cpu_ink = if cpu >= 50.0 { skin.accent } else { skin.text };
+        kit::badge(ui, &format!("{cpu:.0}%"), cpu_ink);
+    });
 }
 
 /// Sparkline do histórico. `scale` = teto fixo da série (100 no CPU); zero
 /// significa escala automática pela maior amostra da janela.
 fn sparkline(ui: &mut egui::Ui, hist: &Hist, scale: f32, color: egui::Color32) {
+    // Largura do CARD (o chamador está dentro dele): a série ocupa a linha
+    // inteira, nunca um pedaço pequeno no canto.
     let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), SPARK_H), egui::Sense::hover());
     if hist.len() < 2 {
         return;
     }
     let scale = if scale > 0.0 { scale } else { hist.max().max(1.0) };
     let painter = ui.painter();
-    let step = rect.width() / (HISTORY - 1) as f32;
+    // Passo pelas amostras EXISTENTES: no começo a janela tem 5 pontos e a
+    // linha esticava só o comecinho do card (parecia "mini no canto").
+    let step = rect.width() / (hist.len() - 1) as f32;
     let mut previous: Option<egui::Pos2> = None;
     for (index, value) in hist.iter().enumerate() {
         let x = rect.left() + index as f32 * step;
@@ -448,27 +734,6 @@ fn sparkline(ui: &mut egui::Ui, hist: &Hist, scale: f32, color: egui::Color32) {
             painter.line_segment([previous, point], egui::Stroke::new(1.5_f32, color));
         }
         previous = Some(point);
-    }
-}
-
-/// Barras finas, uma por núcleo, preenchendo a largura disponível.
-fn core_bars(ui: &mut egui::Ui, usages: &[f32], skin: Skin) {
-    if usages.is_empty() {
-        return;
-    }
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), CORE_BAR_H), egui::Sense::hover());
-    let gap = 2.0;
-    let count = usages.len() as f32;
-    let bar_w = ((rect.width() - gap * (count - 1.0)) / count).max(2.0);
-    for (index, usage) in usages.iter().enumerate() {
-        let x = rect.left() + index as f32 * (bar_w + gap);
-        let cell = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(bar_w, rect.height()));
-        ui.painter().rect_filled(cell, egui::CornerRadius::same(1), skin.hover);
-        let frac = (*usage / 100.0).clamp(0.0, 1.0);
-        if frac > 0.0 {
-            let filled = egui::Rect::from_min_max(cell.left_bottom() - egui::vec2(0.0, cell.height() * frac), cell.right_bottom());
-            ui.painter().rect_filled(filled, egui::CornerRadius::same(1), skin.accent);
-        }
     }
 }
 
@@ -492,7 +757,6 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
         return out;
     };
 
-    let skin = Skin::of(ui);
     let mut sort_choice: Option<SortBy> = None;
     let mut kill_request: Option<(u32, String)> = None;
     let sort = state.sort;
@@ -503,164 +767,31 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
     let temps_last = state.temps.last;
 
     egui::ScrollArea::vertical().id_salt("system-scroll").auto_shrink([false, false]).show(ui, |ui| {
-        // ── CPU ──────────────────────────────────────────────────────
-        let cpu = live.sys.global_cpu_usage();
-        heading(ui, i18n::t(lang, Key::SysCpu));
-        // Título vazio: o número já está à direita e o cabeçalho acima diz o resto.
-        meter(ui, "", &format!("{cpu:.0}%"), cpu / 100.0, skin.accent, skin);
-        sparkline(ui, &live.cpu_hist, 100.0, skin.accent);
-        ui.add_space(2.0);
-        ui.label(egui::RichText::new(i18n::t(lang, Key::SysPerCore)).small().weak());
-        let cores: Vec<f32> = live.sys.cpus().iter().map(|core| core.usage()).collect();
-        core_bars(ui, &cores, skin);
-        ui.add_space(10.0);
-        ui.separator();
+        kit::column(ui, CONTENT_W, |ui| {
+            let col_w = ui.available_width();
+            // O espaçamento do kit separa os cards dentro da linha: descontar as
+            // duas folgas evita a grade estourar a coluna.
+            let gap = ui.spacing().item_spacing.x;
+            // Reflui com a largura: duas colunas só quando cada card ainda tem
+            // largura legível; abaixo disso empilha (janela pequena mostra
+            // menos card, nunca um card cortado).
+            let two_cols = col_w >= TWO_COL_MIN_W;
+            let card_w = if two_cols { ((col_w - GUTTER - 2.0 * gap) / 2.0).floor() } else { col_w };
 
-        // ── Memória e swap ───────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::SysMemory));
-        let total_ram = live.sys.total_memory();
-        let used_ram = live.sys.used_memory();
-        let ram_frac = if total_ram == 0 { 0.0 } else { used_ram as f32 / total_ram as f32 };
-        meter(ui, "RAM", &format!("{} / {}", format_bytes(used_ram), format_bytes(total_ram)), ram_frac, skin.accent, skin);
-        let total_swap = live.sys.total_swap();
-        let used_swap = live.sys.used_swap();
-        // Sem arquivo de paginação o swap é 0/0: mostra "0 B / 0 B" (não é erro).
-        let swap_frac = if total_swap == 0 { 0.0 } else { used_swap as f32 / total_swap as f32 };
-        meter(ui, i18n::t(lang, Key::SysSwap), &format!("{} / {}", format_bytes(used_swap), format_bytes(total_swap)), swap_frac, skin.muted, skin);
-        ui.add_space(10.0);
-        ui.separator();
+            // Grade 2×N: CPU | Memória · Discos | Rede. A altura da primeira
+            // linha vem da grade de núcleos (a memória cabe com folga).
+            let cores: Vec<f32> = live.sys.cpus().iter().map(|core| usage_non_negative(core.usage())).collect();
+            let chip_room = card_w - 2.0 * 14.0 - 2.0;
+            let rows = cores.len().div_ceil(chip_capacity(chip_room)).max(1);
+            let row_h = 124.0 + rows as f32 * (CHIP_H + 6.0);
 
-        // ── Discos por volume ────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::SysDisks));
-        let mut any_disk = false;
-        if let Some(disks) = live.disks.as_ref() {
-            for disk in disks {
-                let total = disk.total_space();
-                if total == 0 {
-                    continue;
-                }
-                any_disk = true;
-                let used = total.saturating_sub(disk.available_space());
-                let kind = disk_kind_label(disk.kind()).unwrap_or_else(|| i18n::t(lang, Key::SysUnknown));
-                let name = format!("{} · {kind}", disk.mount_point().display());
-                let frac = used as f32 / total as f32;
-                meter(ui, &name, &format!("{} / {}", format_bytes(used), format_bytes(total)), frac, skin.accent, skin);
-            }
-        }
-        if !any_disk {
-            ui.label(egui::RichText::new(i18n::t(lang, Key::SysUnavailable)).small().weak());
-        }
-        ui.add_space(10.0);
-        ui.separator();
-
-        // ── Rede ─────────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::SysNetwork));
-        let (down, up) = net_deltas(live.nets.as_ref());
-        ui.label(egui::RichText::new(format!("↓ {}   ↑ {}", format_rate(down as u64), format_rate(up as u64))).small());
-        sparkline(ui, &live.down_hist, 0.0, skin.accent);
-        if let Some(nets) = live.nets.as_ref() {
-            let mut rows: Vec<(String, u64, u64)> = nets
-                .into_iter()
-                .filter(|(_name, data)| {
-                    data.operational_state() == InterfaceOperationalState::Up && (data.total_received() > 0 || data.total_transmitted() > 0)
-                })
-                .map(|(name, data)| (name.to_string_lossy().into_owned(), data.received(), data.transmitted()))
-                .collect();
-            rows.sort_by_key(|(_, down, up)| std::cmp::Reverse(down.saturating_add(*up)));
-            for (name, down, up) in rows.iter().take(INTERFACES) {
-                ui.label(egui::RichText::new(format!("{name}   ↓ {}   ↑ {}", format_rate(*down), format_rate(*up))).small().weak());
-            }
-        }
-        ui.add_space(10.0);
-        ui.separator();
-
-        // ── Bateria ──────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::SysBattery));
-        match battery() {
-            Some(info) => {
-                let state_key = if info.charging {
-                    Key::SysCharging
-                } else if info.plugged {
-                    Key::SysPlugged
-                } else {
-                    Key::SysOnBattery
-                };
-                let frac = f32::from(info.percent) / 100.0;
-                // Bateria fraca fora da tomada é o único caso que pede cor de
-                // alerta (o resto é leitura normal).
-                let color = if info.percent <= 20 && !info.plugged { skin.danger } else { skin.accent };
-                meter(ui, "", &format!("{}% · {}", info.percent, i18n::t(lang, state_key)), frac, color, skin);
-            }
-            None => {
-                ui.label(egui::RichText::new(i18n::t(lang, Key::SysNoBattery)).small().weak());
-            }
-        }
-        ui.add_space(10.0);
-        ui.separator();
-
-        // ── Uptime ───────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::SysUptime));
-        let uptime = System::uptime().map(format_uptime).unwrap_or_else(|_| i18n::t(lang, Key::SysUnavailable).to_string());
-        ui.label(egui::RichText::new(uptime).small());
-
-        // ── Temperaturas (best-effort) ───────────────────────────────
-        // Se o WMI parar de responder depois de ter funcionado, a última
-        // leitura da sessão continua no cabeçalho em vez de "indisponível".
-        let current = live.comps.as_ref().and_then(|comps| comps.into_iter().filter_map(|c| c.temperature()).reduce(f32::max)).or(temps_last);
-        let header = match current {
-            Some(value) => format!("{} · {value:.0} °C", i18n::t(lang, Key::SysTemperatures)),
-            None => i18n::t(lang, Key::SysTemperatures).to_string(),
-        };
-        egui::CollapsingHeader::new(egui::RichText::new(header).strong()).id_salt("system-temps").show(ui, |ui| {
-            let mut any = false;
-            if let Some(comps) = live.comps.as_ref() {
-                for component in comps {
-                    if let Some(value) = component.temperature() {
-                        any = true;
-                        ui.label(egui::RichText::new(format!("{} · {value:.0} °C", component.label())).small());
-                    }
-                }
-            }
-            if !any && current.is_none() {
-                ui.label(egui::RichText::new(i18n::t(lang, Key::SysUnavailable)).small().weak());
-            }
-            let average = temps_average.map_or_else(|| "—".to_string(), |value| format!("{value:.0} °C"));
-            let maximum = temps_max.map_or_else(|| "—".to_string(), |value| format!("{value:.0} °C"));
-            ui.label(
-                egui::RichText::new(format!("{}: {average}   {}: {maximum}", i18n::t(lang, Key::SysAvg), i18n::t(lang, Key::SysMax))).small().weak(),
-            );
-        });
-        ui.add_space(10.0);
-        ui.separator();
-
-        // ── Top processos ────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::SysProcesses));
-        ui.horizontal(|ui| {
-            if kit::pill(ui, "CPU", sort == SortBy::Cpu).clicked() {
-                sort_choice = Some(SortBy::Cpu);
-            }
-            if kit::pill(ui, "RAM", sort == SortBy::Mem).clicked() {
-                sort_choice = Some(SortBy::Mem);
-            }
-        });
-        ui.add_space(4.0);
-        egui::Grid::new("system-procs").num_columns(5).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
-            ui.label(egui::RichText::new(i18n::t(lang, Key::SysProcesses)).small().weak());
-            ui.label(egui::RichText::new("PID").small().weak());
-            ui.label(egui::RichText::new("CPU").small().weak());
-            ui.label(egui::RichText::new("RAM").small().weak());
-            ui.label("");
-            ui.end_row();
-            for row in &live.procs {
-                ui.add(egui::Label::new(egui::RichText::new(&row.name).small()).truncate());
-                ui.label(egui::RichText::new(row.pid.to_string()).small().weak());
-                ui.label(egui::RichText::new(format!("{:.0}%", row.cpu)).small());
-                ui.label(egui::RichText::new(format_bytes(row.mem)).small().weak());
-                if kit::ghost(ui, "✕").on_hover_text(i18n::t(lang, Key::SysKill)).clicked() {
-                    kill_request = Some((row.pid, row.name.clone()));
-                }
-                ui.end_row();
-            }
+            card_pair(ui, two_cols, card_w, row_h, |ui| cpu_card(ui, lang, live, &cores), |ui| memory_card(ui, lang, live));
+            ui.add_space(GUTTER);
+            card_pair(ui, two_cols, card_w, 210.0, |ui| disks_card(ui, lang, live), |ui| network_card(ui, lang, live));
+            ui.add_space(GUTTER);
+            kit::card(ui, col_w, |ui| energy_card(ui, lang, live, temps_average, temps_max, temps_last));
+            ui.add_space(GUTTER);
+            kit::card(ui, col_w, |ui| processes_card(ui, lang, live, sort, &mut sort_choice, &mut kill_request));
         });
     });
 

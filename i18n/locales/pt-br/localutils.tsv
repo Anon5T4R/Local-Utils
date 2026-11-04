@@ -74,6 +74,9 @@
 	Register shortcut	Registrar atalho
 	Press the new shortcut… (Esc cancels)	Pressione o novo atalho… (Esc cancela)
 	Open a quick popup at the cursor	Abrir um popup rápido no cursor
+	Alarm sound	Som do alarme
+	Path to a .wav file	Caminho de um arquivo .wav
+	Test	Testar
 	Could not paste into the active window	Não foi possível colar na janela ativa
 	OCR	OCR
 	reading the image…	lendo a imagem…
@@ -99,6 +102,7 @@
 	Text to insert	Texto a inserir
 	screenshot saved	captura salva
 	Could not save the screenshot	Não foi possível salvar a captura
+	Discard capture	Descartar captura
 	Clock	Relógio
 	Calculator	Calculadora
 	Units	Unidades
@@ -119,14 +123,18 @@
 	Work (min)	Trabalho (min)
 	Break (min)	Pausa (min)
 	{n} cycles	{n} ciclos
-	Alarm (hh:mm)	Alarme (hh:mm)
 	Label	Rótulo
-	invalid time — use hh:mm	hora inválida — use hh:mm
 	alarm: {label}	alarme: {label}
 	No alarms yet	Nenhum alarme ainda
+	+ alarm	+ alarme
+	Hour	Hora
+	Minute	Minuto
+	+{n} min	+{n} min
+	Click the display to type the time	Clique no visor para digitar o tempo
 	Expression	Expressão
 	History	Histórico
 	No calculations yet	Nenhuma conta ainda
+	Type an expression or use the keypad	Digite uma expressão ou use o teclado
 	syntax error	erro de sintaxe
 	missing parenthesis	parêntese faltando
 	division by zero	divisão por zero
@@ -141,6 +149,7 @@
 	Value	Valor
 	From	De
 	To	Para
+	Swap units	Trocar unidades
 	enter a number	digite um número
 	Base64	Base64
 	URL	URL
@@ -182,7 +191,7 @@
 	not a supported image	não é uma imagem suportada
 	waiting	aguardando
 	Clear finished	Limpar concluídos
-	JXL is input only (no JXL encoder yet)	JXL só como origem (ainda não existe codificador JXL)
+	JXL is input only (no encoder compatible with our license)	JXL só como origem (sem codificador compatível com a nossa licença)
 	CPU	CPU
 	per core	por núcleo
 	Memory	Memória
@@ -205,3 +214,4 @@
 	could not end the process	não foi possível finalizar o processo
 	avg	média
 	max	máx
+	Energy & system	Energia e sistema

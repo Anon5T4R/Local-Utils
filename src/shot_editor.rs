@@ -438,6 +438,8 @@ impl Shot {
 #[derive(Default)]
 pub struct Outcome {
     pub status: Option<String>,
+    /// "Descartar captura": o app limpa o `shot` e a aba volta pro empty-state.
+    pub discard: bool,
 }
 
 /// Desenha a aba. Sem captura pendente, mostra a dica do atalho.
@@ -474,6 +476,11 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, hotkey: &str, shot: Option<&mut Shot>
     }
 
     toolbar(ui, lang, shot, &mut out);
+    // Descartou: nada de canvas neste frame — o app limpa a captura no fim do
+    // frame e a aba já desenha o empty-state no seguinte.
+    if out.discard {
+        return out;
+    }
     // A seleção só existe na ferramenta Select: trocou de ferramenta, limpou.
     if shot.tool != Tool::Select {
         shot.selected = None;
@@ -540,6 +547,11 @@ fn toolbar(ui: &mut egui::Ui, lang: Lang, shot: &mut Shot, out: &mut Outcome) {
         }
         if kit::pill(ui, t(Key::SaveShot), true).clicked() {
             out.status = Some(save_png(shot, lang));
+        }
+        // Descartar: ação BARATA (capturar de novo é um atalho), então sem
+        // modal — ghost discreto na tinta do tema, nunca vermelho.
+        if kit::ghost_action(ui, t(Key::ShotDiscard)).clicked() {
+            out.discard = true;
         }
     });
 }

@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod alarm_sound;
 mod app;
 mod autostart;
 mod capture;

@@ -85,6 +85,8 @@ pub struct OptionsState {
     autostart: bool,
     /// Popup no cursor ligado? Vale na hora — só persiste no config.
     popup_mode: bool,
+    /// Rascunho do `.wav` do alarme (caminho; vazio = bipes do SO).
+    alarm_sound: String,
     /// Modo de captura do atalho: a próxima combinação vira o rascunho.
     capturing: bool,
     /// O Win estava pressionado no frame anterior. O egui não entrega o Super
@@ -117,14 +119,16 @@ impl OptionsState {
         self.new_exclude.clear();
         self.autostart = cfg.autostart_ok;
         self.popup_mode = cfg.popup_instead_of_window;
+        self.alarm_sound = cfg.alarm_sound.clone();
         // Reabrir sempre começa fora do modo de captura.
         self.capturing = false;
         self.win_held = false;
     }
 
     /// Valores prontos pro config no Salvar: atalho aparado (vazio volta ao
-    /// padrão) e lista normalizada — minúsculas, sem vazios e sem repetição.
-    pub fn saved(&self) -> (String, Vec<String>) {
+    /// padrão), lista normalizada — minúsculas, sem vazios e sem repetição — e
+    /// o caminho do som do alarme aparado.
+    pub fn saved(&self) -> (String, Vec<String>, String) {
         let hotkey = self.hotkey.trim();
         let hotkey = if hotkey.is_empty() { DEFAULT_HOTKEY.to_string() } else { hotkey.to_string() };
         let mut exclude: Vec<String> = Vec::new();
@@ -134,7 +138,7 @@ impl OptionsState {
                 exclude.push(name);
             }
         }
-        (hotkey, exclude)
+        (hotkey, exclude, self.alarm_sound.trim().to_string())
     }
 }
 
@@ -177,6 +181,27 @@ pub fn show(ctx: &egui::Context, lang: Lang, state: &mut OptionsState) -> Outcom
             out.popup_mode = Some(popup_mode);
         }
         ui.add_space(10.0);
+
+        // ── som do alarme (vale no próximo toque) ────────────────────
+        // O caminho do `.wav` fica no config e viaja com ele; o "Testar" toca
+        // UMA vez pra ouvir antes de confiar no alarme.
+        ui.label(egui::RichText::new(t(Key::OptionsAlarmSound)).strong());
+        ui.horizontal(|ui| {
+            ui.add(kit::line(&mut state.alarm_sound).hint_text(t(Key::OptionsAlarmSoundHint)).desired_width(360.0));
+            let test = ui.add_enabled_ui(windows, |ui| kit::pill(ui, t(Key::OptionsTest), false)).inner;
+            if test.clicked() {
+                crate::alarm_sound::preview(&state.alarm_sound);
+            }
+            if !windows {
+                test.on_hover_text(t(Key::WindowsOnly));
+            }
+        });
+        if !windows {
+            ui.label(egui::RichText::new(t(Key::WindowsOnly)).small().weak());
+        }
+        ui.add_space(12.0);
+        ui.separator();
+        ui.add_space(8.0);
 
         // ── atalho global (vale no próximo arranque) ──────────────────
         ui.horizontal(|ui| {

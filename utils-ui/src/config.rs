@@ -56,6 +56,9 @@ pub struct Config {
     /// Alarmes do relógio (aba Ferramentas): `(hh:mm, rótulo)`. Persistem entre
     /// sessões — o painel do relógio só edita a lista e avisa o app, que grava.
     pub alarms: Vec<(String, String)>,
+    /// `.wav` tocado quando um alarme dispara (`alarm_sound.rs`). Vazio = sem
+    /// arquivo: o aviso são três bipes do esquema de som do Windows.
+    pub alarm_sound: String,
     /// Texto da aba Notas (scratchpad). Gravado pelo autosave debounced da
     /// própria aba (1s depois da última tecla).
     pub notes: String,
@@ -75,6 +78,7 @@ impl Default for Config {
             exclude: DEFAULT_EXCLUDE.iter().copied().map(str::to_string).collect(),
             popup_instead_of_window: true,
             alarms: Vec::new(),
+            alarm_sound: String::new(),
             notes: String::new(),
             recent_colors: Vec::new(),
         }
@@ -160,6 +164,7 @@ mod tests {
         assert_eq!(cfg.exclude.len(), DEFAULT_EXCLUDE.len());
         assert!(cfg.popup_instead_of_window, "o popup no cursor nasce ligado");
         assert!(cfg.alarms.is_empty(), "alarmes nascem sem nenhum");
+        assert!(cfg.alarm_sound.is_empty(), "o som do alarme nasce vazio (bipes do SO)");
         assert!(cfg.notes.is_empty(), "o scratchpad nasce vazio");
         assert!(cfg.recent_colors.is_empty(), "os recentes de cor nascem vazios");
 

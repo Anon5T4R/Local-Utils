@@ -15,9 +15,9 @@
 //! do original ficam para trás de propósito (privacidade — mesmo princípio do
 //! local-image, que também não propaga metadado ao re-salvar).
 //!
-//! **JXL só como ORIGEM**: não existe encoder JPEG XL maduro em Rust (o
-//! `jxl-oxide` é decodificador). Por isso o destino não oferece JXL — e a aba
-//! diz isso na tela.
+//! **JXL só como ORIGEM**: o `jxl-oxide` é decodificador (JXL como origem
+//! funciona). Não existe encoder JXL compatível com a nossa licença (GPL-3.0),
+//! então o destino não oferece JXL — e a aba diz o motivo na tela.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
@@ -304,8 +304,8 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
         });
     });
 
-    // JXL só como origem (não há encoder): o aviso fica junto da fila, não
-    // escondido num tooltip.
+    // JXL só como origem (não há codificador compatível com a licença): o
+    // aviso fica junto da fila, não escondido num tooltip.
     ui.add_space(4.0);
     ui.label(egui::RichText::new(i18n::t(lang, Key::JxlInputOnly)).small().weak());
 
@@ -358,7 +358,8 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
                 ui.add_sized([360.0, 22.0], egui::Label::new(egui::RichText::new(status.0.as_str()).small().color(status.1)).truncate())
                     .on_hover_text(status.0.clone());
 
-                if kit::ghost(ui, "✕").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
+                // "×" (U+00D7): o "✕" (U+2715) não existe nas fontes e saía vazio.
+                if kit::ghost_action(ui, "×").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
                     remove = Some(index);
                 }
             });

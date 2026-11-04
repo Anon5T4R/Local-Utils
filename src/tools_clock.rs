@@ -6,22 +6,30 @@
 //! ([`ClockState::wants_repaint`]) — a aba pode estar fechada e o alarme tem
 //! que tocar do mesmo jeito.
 //!
-//! Sem som e sem bandeja (nenhuma dep nova): o aviso é o texto que PISCA no
-//! painel, a mensagem no rodapé e o `(0:00)` no rótulo da aba.
+//! Som: `alarm_sound.rs` toca o `.wav` do config em loop (ou três bipes do SO
+//! sem arquivo) quando um alarme dispara. O toque para no ack do usuário
+//! (clique, Esc ou a janela voltando ao foco) e quando o aviso expira.
 //!
 //! Os alarmes em si vivem no config (`utils_ui::config::Config::alarms`); este
 //! módulo só edita a lista e sinaliza `cfg_changed` — quem grava o JSON é o app.
 
 use utils_ui::i18n::{self, Key, Lang};
 
+use crate::alarm_sound::AlarmSound;
 use crate::clipboard_ui::{civil_parts, Clock};
 use crate::history::now_ms;
-use crate::ui as kit;
+use crate::ui::{self as kit, Skin};
 
 /// Quanto tempo o aviso do toque fica piscando antes de sumir sozinho.
 const FLASH_MS: u64 = 10_000;
 /// Meio período do pisca (ligado/desligado).
 const BLINK_MS: u64 = 500;
+/// Largura máxima do palco (o app roda maximizado; o visor fica no centro).
+const CONTENT_W: f32 = 520.0;
+/// Corpo do visor de dígitos (§ padrão do palco central).
+const DISPLAY_SIZE: f32 = 96.0;
+/// Duração dos presets do timer, em minutos.
+const PRESETS: [u32; 4] = [1, 5, 10, 30];
 
 /// Modo do relógio (as pills do topo do painel).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -178,15 +186,23 @@ impl Stopwatch {
 pub struct ClockState {
     mode: Mode,
     timer: Countdown,
-    /// Texto do campo do timer (`hh:mm:ss`) — vira duração no Play/Reset.
+    /// Texto do campo do timer (`hh:mm:ss`) — a ÚNICA fonte da duração dele:
+    /// o visor mostra o que este campo diz e os presets reescrevem aqui (mata
+    /// o par "5:00" vs "00:05:00").
     timer_text: String,
+    /// O visor virou campo de edição (clique nele).
+    timer_editing: bool,
     /// O timer zerou e ninguém mexeu: o rótulo da aba mostra `(0:00)`.
     timer_done: bool,
     pomo: Pomodoro,
     stop: Stopwatch,
-    /// Campos da linha de "adicionar alarme".
-    alarm_time: String,
+    /// Popover de "+ alarme" aberto + os dois steppers e o rótulo.
+    alarm_open: bool,
+    alarm_hour: u32,
+    alarm_minute: u32,
     alarm_label: String,
+    /// Som do toque (`.wav` do config em loop; sem arquivo, 3 bipes do SO).
+    sound: AlarmSound,
     /// `(hh:mm, minuto local)` que já tocaram — um alarme por minuto.
     fired: Vec<(String, i64)>,
     /// Aviso que pisca (texto pronto + instante em que entrou).
@@ -201,11 +217,16 @@ impl Default for ClockState {
             mode: Mode::Timer,
             timer,
             timer_text: "00:05:00".to_string(),
+            timer_editing: false,
             timer_done: false,
             pomo: Pomodoro::default(),
             stop: Stopwatch::default(),
-            alarm_time: String::new(),
+            alarm_open: false,
+            // Hora cheia da manhã: o valor mais provável de um alarme novo.
+            alarm_hour: 7,
+            alarm_minute: 0,
             alarm_label: String::new(),
+            sound: AlarmSound::default(),
             fired: Vec::new(),
             flash: None,
         }
@@ -245,9 +266,20 @@ impl ClockState {
         }
     }
 
+    /// Preset de duração: parte do valor do campo (a fonte única) e recarrega
+    /// o timer PARADO com `minutes` a mais. Um timer não passa de 24h.
+    fn apply_preset(&mut self, minutes: u32) {
+        let base = parse_hhmmss(&self.timer_text).unwrap_or(self.timer.total_ms / 1_000);
+        let total = base.saturating_add(u64::from(minutes) * 60).min(24 * 3_600);
+        self.timer_text = fmt_hhmmss(total);
+        self.timer.set_duration(total.saturating_mul(1_000));
+        self.timer_done = false;
+    }
+
     /// Tique do relógio: chamado no TOPO do frame (com a aba visível ou não).
     /// Devolve a mensagem pronta pro rodapé quando algo termina ou toca.
-    pub fn tick(&mut self, lang: Lang, clock: &Clock, alarms: &[(String, String)]) -> Option<String> {
+    /// `sound_file` é o `.wav` configurado nas Opções (vazio = bipes do SO).
+    pub fn tick(&mut self, lang: Lang, clock: &Clock, alarms: &[(String, String)], sound_file: &str) -> Option<String> {
         let now = now_ms();
         let mut status = None;
 
@@ -301,6 +333,8 @@ impl ClockState {
             } else {
                 format!("⏰ {}", i18n::t(lang, Key::ClockAlarmRinging).replace("{label}", label))
             };
+            // Toque do alarme: `.wav` do usuário em loop ou as 3 batidas do SO.
+            self.sound.start(sound_file, now);
             self.flash = Some((message.clone(), now));
             status = Some(message);
         }
@@ -310,14 +344,35 @@ impl ClockState {
         let expired = self.flash.as_ref().is_some_and(|(_, since)| now.saturating_sub(*since) > FLASH_MS);
         if expired {
             self.flash = None;
+            // Sem ninguém olhando, o toque também para: um `.wav` em loop não
+            // pode seguir tocando depois que o aviso sumiu da tela.
+            self.sound.stop();
+        } else if self.sound.playing() {
+            // Fallback sem arquivo: as batidas saem espaçadas pelo tique.
+            self.sound.tick(now);
         }
         status
+    }
+
+    /// O alarme está tocando? (o app corta o som na primeira interação)
+    pub fn sound_playing(&self) -> bool {
+        self.sound.playing()
+    }
+
+    /// Para o som na hora (`PlaySoundW(null)`).
+    pub fn stop_sound(&mut self) {
+        self.sound.stop();
     }
 
     /// Precisa de frame periódico? Algo rodando, aviso piscando ou alarme
     /// armado — o app pede repaint de 500ms nesse caso.
     pub fn wants_repaint(&self, alarms: &[(String, String)]) -> bool {
-        self.timer.is_running() || self.pomo.countdown.is_running() || self.stop.is_running() || self.flash.is_some() || !alarms.is_empty()
+        self.timer.is_running()
+            || self.pomo.countdown.is_running()
+            || self.stop.is_running()
+            || self.flash.is_some()
+            || self.sound.playing()
+            || !alarms.is_empty()
     }
 
     /// Sufixo do rótulo da aba: `(0:00)` com o timer zerado e um ⏰ piscando
@@ -350,48 +405,142 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, alarms: &mut 
     let mut out = Outcome::default();
     let now = now_ms();
 
-    ui.horizontal(|ui| {
-        for mode in Mode::ALL {
-            if kit::pill(ui, i18n::t(lang, mode.label_key()), state.mode == mode).clicked() {
-                state.mode = mode;
+    kit::column(ui, CONTENT_W, |ui| {
+        // Nível 2 (Temporizador · Pomodoro · Cronômetro · Alarmes): segmented
+        // control menor, separado por hairline das pills de nível 1.
+        ui.horizontal(|ui| {
+            for mode in Mode::ALL {
+                if kit::segmented(ui, i18n::t(lang, mode.label_key()), state.mode == mode).clicked() {
+                    state.mode = mode;
+                    // Trocar de painel fecha a edição do visor e o popover do
+                    // alarme (os dois são estado do painel que saiu de cena).
+                    state.timer_editing = false;
+                    state.alarm_open = false;
+                }
             }
+        });
+        ui.add_space(14.0);
+
+        // Aviso do toque piscando: o MESMO texto que foi pro rodapé. A tinta
+        // some e volta em vez de o widget desaparecer (senão o layout pula).
+        if let Some((text, since)) = state.flash.clone() {
+            let skin = Skin::of(ui);
+            let visible = (now.saturating_sub(since) / BLINK_MS).is_multiple_of(2);
+            let ink = if visible { skin.accent } else { skin.accent.gamma_multiply(0.0) };
+            ui.vertical_centered(|ui| {
+                ui.label(egui::RichText::new(text).strong().color(ink));
+            });
+            ui.add_space(10.0);
+        }
+
+        match state.mode {
+            Mode::Timer => timer_ui(ui, lang, state, now, &mut out),
+            Mode::Pomodoro => pomodoro_ui(ui, lang, state, now),
+            Mode::Stopwatch => stopwatch_ui(ui, lang, state, now),
+            Mode::Alarms => alarms_ui(ui, lang, state, alarms, &mut out),
         }
     });
-    ui.add_space(8.0);
-
-    // Aviso do toque piscando: o MESMO texto que foi pro rodapé. A tinta some e
-    // volta em vez de o widget desaparecer (senão o layout pula).
-    if let Some((text, since)) = state.flash.clone() {
-        let skin = crate::ui::Skin::of(ui);
-        let visible = (now.saturating_sub(since) / BLINK_MS).is_multiple_of(2);
-        let ink = if visible { skin.accent } else { skin.accent.gamma_multiply(0.0) };
-        ui.label(egui::RichText::new(text).strong().color(ink));
-        ui.add_space(2.0);
-    }
-
-    match state.mode {
-        Mode::Timer => timer_ui(ui, lang, state, now, &mut out),
-        Mode::Pomodoro => pomodoro_ui(ui, lang, state, now),
-        Mode::Stopwatch => stopwatch_ui(ui, lang, state, now),
-        Mode::Alarms => alarms_ui(ui, lang, state, alarms, &mut out),
-    }
     out
 }
 
-/// Painel do timer regressivo.
-fn timer_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64, out: &mut Outcome) {
-    let skin = crate::ui::Skin::of(ui);
-    ui.label(egui::RichText::new(fmt_clock(state.timer.remaining(now))).size(38.0).strong().color(skin.text));
-    ui.add_space(6.0);
+/// Fileira centralizada: o egui não centraliza `horizontal` sozinho, então a
+/// largura vem calculada de fora.
+fn centered_row<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     ui.horizontal(|ui| {
-        ui.label(i18n::t(lang, Key::ClockTimerHint));
-        ui.add(kit::line(&mut state.timer_text).desired_width(120.0));
+        ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
+        add(ui)
+    })
+    .inner
+}
+
+/// Rótulo pequeno em caixa alta sobre o visor (o "smallcaps" do palco).
+fn stage_label(ui: &mut egui::Ui, text: &str) {
+    let skin = Skin::of(ui);
+    ui.vertical_centered(|ui| {
+        ui.label(egui::RichText::new(text.to_uppercase()).small().color(skin.muted));
     });
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        let running = state.timer.is_running();
-        let label = if running { Key::ClockPause } else { Key::ClockStart };
-        if kit::pill(ui, i18n::t(lang, label), true).clicked() {
+}
+
+/// Largura do visor de dígitos (para centralizar e para o clique acertar).
+fn display_width(ui: &egui::Ui, text: &str) -> f32 {
+    kit::text_width(ui, text, egui::FontId::monospace(DISPLAY_SIZE))
+}
+
+/// Visor de dígitos do palco: mono tabular (o número não "dança" a cada
+/// segundo) e clicável quando há edição por trás.
+fn stage_display(ui: &mut egui::Ui, text: &str, hint: Option<&str>) -> egui::Response {
+    let skin = Skin::of(ui);
+    let label = egui::Label::new(egui::RichText::new(text).font(egui::FontId::monospace(DISPLAY_SIZE)).color(skin.text)).sense(egui::Sense::click());
+    let resp = ui.add(label);
+    if resp.hovered() && hint.is_some() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+    }
+    match hint {
+        Some(hint) => resp.on_hover_text(hint),
+        None => resp,
+    }
+}
+
+/// Fileira de presets (`+1 min`, `+5 min`…): alimenta o display.
+fn presets_row(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState) {
+    let labels: Vec<String> = PRESETS.iter().map(|minutes| i18n::t(lang, Key::ClockPresetMin).replace("{n}", &minutes.to_string())).collect();
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let spacing = ui.spacing().item_spacing.x;
+    let mut total = 0.0;
+    for label in &labels {
+        total += kit::text_width(ui, label, font.clone()) + 28.0 + spacing;
+    }
+    total -= spacing;
+    centered_row(ui, total, |ui| {
+        for (label, minutes) in labels.iter().zip(PRESETS) {
+            if kit::pill(ui, label, false).clicked() {
+                state.apply_preset(minutes);
+            }
+        }
+    });
+}
+
+/// Painel do timer regressivo: palco central com o visor de dígitos.
+fn timer_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64, out: &mut Outcome) {
+    stage_label(ui, i18n::t(lang, Key::ClockTimer));
+    ui.add_space(4.0);
+    if state.timer_editing {
+        // Campo fino no lugar do visor: é o MESMO valor que o display mostra
+        // (a duração do timer), só que editável.
+        let width = 200.0;
+        let resp = centered_row(ui, width, |ui| {
+            ui.allocate_ui_with_layout(egui::vec2(width, DISPLAY_SIZE), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.add(kit::line(&mut state.timer_text).desired_width(width))
+            })
+            .inner
+        });
+        if resp.changed() {
+            // Aplicar ao vivo mantém display e campo contando a mesma coisa.
+            if let Some(seconds) = parse_hhmmss(&state.timer_text).filter(|seconds| *seconds > 0) {
+                state.timer.set_duration(seconds.saturating_mul(1_000));
+                state.timer_done = false;
+            }
+        }
+        let done = ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape));
+        if done || resp.lost_focus() {
+            state.timer_editing = false;
+        }
+    } else {
+        let text = fmt_clock(state.timer.remaining(now));
+        let hint = i18n::t(lang, Key::ClockEditHint);
+        let width = display_width(ui, &text);
+        let resp = centered_row(ui, width, |ui| stage_display(ui, &text, Some(hint)));
+        if resp.clicked() {
+            state.timer_editing = true;
+        }
+    }
+    ui.add_space(16.0);
+    presets_row(ui, lang, state);
+    ui.add_space(14.0);
+    let running = state.timer.is_running();
+    let label = if running { Key::ClockPause } else { Key::ClockStart };
+    centered_row(ui, 288.0, |ui| {
+        if kit::big(ui, i18n::t(lang, label), true, 150.0).clicked() {
             out.status = if running {
                 state.timer.pause(now);
                 None
@@ -399,28 +548,40 @@ fn timer_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64, out
                 state.start_timer(lang, now)
             };
         }
-        if kit::pill(ui, i18n::t(lang, Key::ClockReset), false).clicked() {
+        if kit::big(ui, i18n::t(lang, Key::ClockReset), false, 130.0).clicked() {
             out.status = state.reset_timer(lang);
         }
     });
 }
 
-/// Painel do pomodoro.
+/// Painel do pomodoro: a fase é o dado principal (badge grande), o visor
+/// abaixo e as durações num par de campos.
 fn pomodoro_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64) {
-    let skin = crate::ui::Skin::of(ui);
+    let skin = Skin::of(ui);
     let phase_key = match state.pomo.phase {
         PomoPhase::Work => Key::ClockPomodoroWork,
         PomoPhase::Break => Key::ClockPomodoroBreak,
     };
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(i18n::t(lang, phase_key)).strong().color(skin.accent));
-        let cycles = i18n::t(lang, Key::ClockPomodoroCycles).replace("{n}", &state.pomo.cycles.to_string());
-        ui.label(egui::RichText::new(cycles).small().weak());
+    let phase = i18n::t(lang, phase_key);
+    let phase_w = kit::text_width(ui, phase, egui::FontId::proportional(14.0)) + 24.0;
+    centered_row(ui, phase_w, |ui| {
+        kit::badge_lg(ui, phase, skin.accent);
     });
-    ui.label(egui::RichText::new(fmt_clock(state.pomo.countdown.remaining(now))).size(38.0).strong().color(skin.text));
+    ui.add_space(8.0);
+    let text = fmt_clock(state.pomo.countdown.remaining(now));
+    let width = display_width(ui, &text);
+    centered_row(ui, width, |ui| {
+        stage_display(ui, &text, None);
+    });
     ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        ui.label(i18n::t(lang, Key::ClockPomodoroWorkMin));
+    let cycles = i18n::t(lang, Key::ClockPomodoroCycles).replace("{n}", &state.pomo.cycles.to_string());
+    ui.vertical_centered(|ui| {
+        ui.label(egui::RichText::new(cycles).small().color(skin.muted));
+    });
+    ui.add_space(14.0);
+    let labels_w = 340.0;
+    centered_row(ui, labels_w, |ui| {
+        ui.label(egui::RichText::new(i18n::t(lang, Key::ClockPomodoroWorkMin)).small());
         let mut work = state.pomo.work_min;
         if ui.add(egui::DragValue::new(&mut work).range(1..=180)).changed() {
             state.pomo.work_min = work;
@@ -429,7 +590,8 @@ fn pomodoro_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64) 
                 state.pomo.load_phase();
             }
         }
-        ui.label(i18n::t(lang, Key::ClockPomodoroBreakMin));
+        ui.add_space(10.0);
+        ui.label(egui::RichText::new(i18n::t(lang, Key::ClockPomodoroBreakMin)).small());
         let mut rest = state.pomo.break_min;
         if ui.add(egui::DragValue::new(&mut rest).range(1..=180)).changed() {
             state.pomo.break_min = rest;
@@ -438,81 +600,184 @@ fn pomodoro_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64) 
             }
         }
     });
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        let running = state.pomo.countdown.is_running();
-        let label = if running { Key::ClockPause } else { Key::ClockStart };
-        if kit::pill(ui, i18n::t(lang, label), true).clicked() {
+    ui.add_space(14.0);
+    let running = state.pomo.countdown.is_running();
+    let label = if running { Key::ClockPause } else { Key::ClockStart };
+    centered_row(ui, 288.0, |ui| {
+        if kit::big(ui, i18n::t(lang, label), true, 150.0).clicked() {
             if running {
                 state.pomo.countdown.pause(now);
             } else {
                 state.pomo.countdown.start(now);
             }
         }
-        if kit::pill(ui, i18n::t(lang, Key::ClockReset), false).clicked() {
+        if kit::big(ui, i18n::t(lang, Key::ClockReset), false, 130.0).clicked() {
             state.pomo.reset(now);
         }
     });
 }
 
-/// Painel do cronômetro.
+/// Painel do cronômetro: visor + os dois botões (sem voltas, por desenho).
 fn stopwatch_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64) {
-    let skin = crate::ui::Skin::of(ui);
-    let elapsed = state.stop.elapsed(now);
-    ui.label(egui::RichText::new(fmt_stopwatch(elapsed)).size(38.0).strong().color(skin.text));
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        let running = state.stop.is_running();
-        let label = if running { Key::ClockStop } else { Key::ClockStart };
-        if kit::pill(ui, i18n::t(lang, label), true).clicked() {
+    stage_label(ui, i18n::t(lang, Key::ClockStopwatch));
+    ui.add_space(4.0);
+    let text = fmt_stopwatch(state.stop.elapsed(now));
+    let width = display_width(ui, &text);
+    centered_row(ui, width, |ui| {
+        stage_display(ui, &text, None);
+    });
+    ui.add_space(18.0);
+    let running = state.stop.is_running();
+    let label = if running { Key::ClockStop } else { Key::ClockStart };
+    centered_row(ui, 288.0, |ui| {
+        if kit::big(ui, i18n::t(lang, label), true, 150.0).clicked() {
             state.stop.toggle(now);
         }
-        if kit::pill(ui, i18n::t(lang, Key::ClockReset), false).clicked() {
+        if kit::big(ui, i18n::t(lang, Key::ClockReset), false, 130.0).clicked() {
             state.stop.reset();
         }
     });
 }
 
-/// Painel dos alarmes: lista + linha de adicionar.
+/// Painel dos alarmes: lista no padrão Clipboard (hora mono, rótulo, ⏰ e a
+/// remoção SEMPRE visível) dentro de um card + o botão "+ alarme", que abre o
+/// popover de escolha da hora.
 fn alarms_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, alarms: &mut Vec<(String, String)>, out: &mut Outcome) {
-    if alarms.is_empty() {
-        ui.label(egui::RichText::new(i18n::t(lang, Key::ClockAlarmsEmpty)).weak());
-    }
+    let skin = Skin::of(ui);
     let mut remove = None;
-    for (index, (time, label)) in alarms.iter().enumerate() {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(time).strong());
-            if !label.is_empty() {
-                ui.label(label);
+    let width = ui.available_width();
+    kit::card(ui, width, |ui| {
+        if alarms.is_empty() {
+            ui.label(egui::RichText::new(i18n::t(lang, Key::ClockAlarmsEmpty)).color(skin.muted));
+        }
+        for (index, (time, label)) in alarms.iter().enumerate() {
+            let width = ui.available_width().max(1.0);
+            let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 40.0), egui::Sense::hover());
+            if resp.hovered() {
+                ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let skin = crate::ui::Skin::of(ui);
-                if kit::ghost_ink(ui, "🗑", skin.danger).on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
+            let inner = rect.shrink2(egui::vec2(8.0, 0.0));
+            let mut row = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)));
+            row.label(egui::RichText::new(time).font(egui::FontId::monospace(16.0)).color(skin.text));
+            row.add_space(10.0);
+            if !label.is_empty() {
+                row.add(egui::Label::new(egui::RichText::new(label).color(skin.text)).truncate());
+            }
+            row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Remover SEMPRE visível, em ghost discreto e tinta do tema. O
+                // botão só no hover da linha piscava: quando o ponteiro chegava
+                // nele, o próprio botão bloqueava o hover da LINHA e o "×"
+                // sumia — clique e visibilidade brigavam pelo mesmo pixel.
+                if kit::ghost_action(ui, "×").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
                     remove = Some(index);
                 }
+                kit::badge(ui, "⏰", skin.accent);
             });
-        });
-    }
+            kit::hairline(ui);
+        }
+        ui.add_space(8.0);
+        if kit::pill(ui, i18n::t(lang, Key::ClockAlarmAdd), true).clicked() {
+            state.alarm_open = true;
+        }
+    });
     if let Some(index) = remove {
         alarms.remove(index);
         out.cfg_changed = true;
     }
-    ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        ui.add(kit::line(&mut state.alarm_time).hint_text(i18n::t(lang, Key::ClockAlarmTime)).desired_width(130.0));
-        ui.add(kit::line(&mut state.alarm_label).hint_text(i18n::t(lang, Key::ClockAlarmLabel)).desired_width(200.0));
-        if kit::pill(ui, i18n::t(lang, Key::ExcludeAdd), true).clicked() {
-            match parse_hhmm(&state.alarm_time) {
-                Some((hour, minute)) => {
-                    alarms.push((format!("{hour:02}:{minute:02}"), state.alarm_label.trim().to_string()));
-                    state.alarm_time.clear();
-                    state.alarm_label.clear();
-                    out.cfg_changed = true;
+    alarm_popover(ui, lang, state, alarms, out);
+}
+
+/// Popover de novo alarme: hora (0–23) e minuto (0–59) em steppers, o rótulo e
+/// o Adicionar. Nada de digitar `hh:mm` à mão.
+fn alarm_popover(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, alarms: &mut Vec<(String, String)>, out: &mut Outcome) {
+    if !state.alarm_open {
+        return;
+    }
+    let skin = Skin::of(ui);
+    let mut add = false;
+    let mut cancel = false;
+    let resp = egui::Modal::new(egui::Id::unique("clock-alarm-new")).frame(kit::modal_frame(ui.ctx())).show(ui.ctx(), |ui| {
+        kit::begin_dialog(ui);
+        ui.set_width(320.0);
+        ui.heading(i18n::t(lang, Key::ClockAlarms));
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new(i18n::t(lang, Key::ClockHour)).small().color(skin.muted));
+                let mut hour = state.alarm_hour;
+                if stepper(ui, "clock-alarm-hour", &mut hour, 23) {
+                    state.alarm_hour = hour;
                 }
-                None => out.status = Some(format!("⚠ {}", i18n::t(lang, Key::ClockAlarmInvalid))),
+            });
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(":").font(egui::FontId::monospace(28.0)).color(skin.muted));
+            ui.add_space(6.0);
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new(i18n::t(lang, Key::ClockMinute)).small().color(skin.muted));
+                let mut minute = state.alarm_minute;
+                if stepper(ui, "clock-alarm-minute", &mut minute, 59) {
+                    state.alarm_minute = minute;
+                }
+            });
+        });
+        ui.add_space(12.0);
+        ui.add(kit::line(&mut state.alarm_label).hint_text(i18n::t(lang, Key::ClockAlarmLabel)).desired_width(f32::INFINITY));
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            if kit::pill(ui, i18n::t(lang, Key::ExcludeAdd), true).clicked() {
+                add = true;
             }
-        }
+            if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                cancel = true;
+            }
+        });
     });
+    if add {
+        let hour = state.alarm_hour;
+        let minute = state.alarm_minute;
+        alarms.push((format!("{hour:02}:{minute:02}"), state.alarm_label.trim().to_string()));
+        state.alarm_label.clear();
+        state.alarm_open = false;
+        out.cfg_changed = true;
+    } else if cancel || resp.should_close() {
+        state.alarm_open = false;
+    }
+}
+
+/// Stepper de hora/minuto: o número grande em mono com o "+" acima e o "-"
+/// abaixo. Devolve `true` quando o valor mudou (o chamador grava no estado).
+fn stepper(ui: &mut egui::Ui, id: &str, value: &mut u32, max: u32) -> bool {
+    let skin = Skin::of(ui);
+    let mut changed = false;
+    // Botões ASCII ("+"/"-"): os triângulos ▲▼ não estão garantidos nas fontes
+    // do app (foi o que matou o "✕" do popup).
+    ui.push_id(id, |ui| {
+        ui.vertical_centered(|ui| {
+            if step_button(ui, "+").clicked() {
+                *value = if *value >= max { 0 } else { *value + 1 };
+                changed = true;
+            }
+            ui.label(egui::RichText::new(format!("{:02}", *value)).font(egui::FontId::monospace(28.0)).color(skin.text));
+            if step_button(ui, "-").clicked() {
+                *value = if *value == 0 { max } else { *value - 1 };
+                changed = true;
+            }
+        });
+    });
+    changed
+}
+
+/// Botão de 34×28 do stepper (área de clique folgada, tinta do tema).
+fn step_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let skin = Skin::of(ui);
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), font, skin.text);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(34.0, 28.0), egui::Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
+    }
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, skin.text);
+    resp
 }
 
 /// `hh:mm:ss` (ou `m:ss` abaixo de uma hora) a partir de ms.
@@ -526,6 +791,12 @@ pub fn fmt_clock(ms: u64) -> String {
     } else {
         format!("{minutes}:{seconds:02}")
     }
+}
+
+/// Segundos → `hh:mm:ss` (o formato que o campo do timer aceita — os presets
+/// reescrevem o campo com isto, nunca com um formato próprio).
+fn fmt_hhmmss(seconds: u64) -> String {
+    format!("{:02}:{:02}:{:02}", seconds / 3_600, (seconds % 3_600) / 60, seconds % 60)
 }
 
 /// `m:ss.d` — o cronômetro mostra décimos.
@@ -562,17 +833,6 @@ pub fn parse_hhmmss(text: &str) -> Option<u64> {
     }
 }
 
-/// `hh:mm` de um alarme → (hora, minuto).
-pub fn parse_hhmm(text: &str) -> Option<(u32, u32)> {
-    let (hours, minutes) = text.trim().split_once(':')?;
-    let hours: u32 = hours.trim().parse().ok()?;
-    let minutes: u32 = minutes.trim().parse().ok()?;
-    if hours > 23 || minutes > 59 {
-        return None;
-    }
-    Some((hours, minutes))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,16 +862,6 @@ mod tests {
         assert_eq!(parse_hhmmss("00:99"), None, "segundo acima de 59");
         assert_eq!(parse_hhmmss("00:99:00"), None, "minuto acima de 59");
         assert_eq!(parse_hhmmss("1:2:3:4"), None);
-    }
-
-    #[test]
-    fn leitura_do_horario_do_alarme() {
-        assert_eq!(parse_hhmm("08:05"), Some((8, 5)));
-        assert_eq!(parse_hhmm(" 23:59 "), Some((23, 59)));
-        assert_eq!(parse_hhmm("24:00"), None);
-        assert_eq!(parse_hhmm("12:60"), None);
-        assert_eq!(parse_hhmm("0805"), None);
-        assert_eq!(parse_hhmm(""), None);
     }
 
     #[test]

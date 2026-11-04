@@ -121,10 +121,15 @@ winreg = "0.55"
 # que chama — a leitura roda numa thread própria.
 # System_Power: GetSystemPowerStatus (bateria da aba Sistema) — um P/Invoke,
 # sem crate nova.
+# Media_Audio: PlaySoundW do alarme do relógio (`alarm_sound.rs`) — loop do
+# .wav do usuário e o stop (`PlaySoundW(null)`).
+# System_Diagnostics_Debug: MessageBeep (fallback de 3 bipes sem arquivo).
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Media_Audio",
     "Win32_System_DataExchange",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_LibraryLoader",
     "Win32_System_Power",
     "Win32_System_SystemInformation",

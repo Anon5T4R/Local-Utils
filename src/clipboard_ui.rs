@@ -190,7 +190,9 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         let width = (ui.available_width() - clear_w).max(120.0);
         let resp = ui.add(kit::line(&mut state.search).hint_text(i18n::t(lang, Key::Search)).desired_width(width));
         state.search_focused = resp.has_focus();
-        if !state.search.is_empty() && kit::ghost(ui, "✕").clicked() {
+        // "×" (U+00D7, presente nas fontes) limpa a busca; o "✕" (U+2715)
+        // saía vazio no Ubuntu/Hack.
+        if !state.search.is_empty() && kit::ghost(ui, "×").clicked() {
             state.search.clear();
         }
     });
@@ -203,11 +205,11 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
                 state.filter = filter;
             }
         }
-        // Ação destrutiva: ghost com a tinta `danger` do tema, encostado à
-        // direita da MESMA linha dos filtros. O modal confirma antes de mexer.
+        // Ação destrutiva CORRIQUEIRA: ghost na tinta do TEMA (o vermelho fica
+        // pro modal que confirma). Encostado à direita da MESMA linha dos
+        // filtros; o modal confirma antes de mexer.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let skin = Skin::of(ui);
-            let clear = kit::ghost_ink(ui, i18n::t(lang, Key::ClearHistory), skin.danger).on_hover_text(i18n::t(lang, Key::ClearExplain));
+            let clear = kit::ghost_action(ui, i18n::t(lang, Key::ClearHistory)).on_hover_text(i18n::t(lang, Key::ClearExplain));
             if clear.clicked() {
                 state.confirm_clear = true;
             }
@@ -463,7 +465,7 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
         if !(resp.hovered() || focused) {
             return;
         }
-        if kit::ghost_ink(ui, "🗑", skin.danger).on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
+        if kit::ghost_action(ui, "🗑").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
             actions.remove = Some(entry.id);
         }
         if let Some(text) = qr_source(entry) {
@@ -473,7 +475,9 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
             let too_long = text.chars().count() > QR_MAX_CHARS;
             let ink = if too_long { skin.muted.gamma_multiply(0.5) } else { skin.muted };
             let tip = if too_long { Key::QrTooLong } else { Key::QRCode };
-            if kit::ghost_ink(ui, "▦", ink).on_hover_text(i18n::t(lang, tip)).clicked() {
+            // "QR" por extenso: o glifo ▦ (U+25A6) não existe no Ubuntu e
+            // renderizava vazio (mesma classe de bug do ✕ do popup).
+            if kit::ghost_ink(ui, "QR", ink).on_hover_text(i18n::t(lang, tip)).clicked() {
                 if too_long {
                     actions.warn = Some(Key::QrTooLong);
                 } else {

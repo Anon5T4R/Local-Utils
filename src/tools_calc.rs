@@ -14,10 +14,16 @@ use utils_ui::i18n::{self, Key, Lang};
 
 use crate::clipboard_ui::copy_new_text;
 use crate::history::History;
-use crate::ui as kit;
+use crate::ui::{self as kit, PadKey, Skin};
 
 /// Quantas contas ficam no histórico da sessão.
 const HISTORY_MAX: usize = 10;
+/// Largura da coluna (calculadora é uma coluna estreita e centralizada).
+const CONTENT_W: f32 = 440.0;
+/// Vão entre as teclas do keypad (a altura de 52px é do [`kit::pad`]).
+const KEY_GAP: f32 = 8.0;
+/// Altura máxima da lista de histórico (rola além disso).
+const HISTORY_H: f32 = 240.0;
 
 /// Peça da expressão (o lexer entrega, o parser consome).
 #[derive(Clone, Debug, PartialEq)]
@@ -360,6 +366,8 @@ pub struct CalcState {
     expr: String,
     /// Último resultado (fica visível grande; clicar copia).
     result: Option<String>,
+    /// Motivo do último erro (aparece no visor, em cor de alerta).
+    error: Option<String>,
     /// Últimas [`HISTORY_MAX`] contas, da mais nova pra mais antiga.
     history: Vec<Line>,
 }
@@ -373,13 +381,23 @@ impl CalcState {
                 self.history.insert(0, Line { expr: self.expr.trim().to_string(), value: text.clone() });
                 self.history.truncate(HISTORY_MAX);
                 self.result = Some(text);
+                self.error = None;
                 None
             }
             Err(e) => {
+                let message = e.message(lang);
                 self.result = None;
-                Some(format!("⚠ {}", e.message(lang)))
+                self.error = Some(message.clone());
+                Some(format!("⚠ {message}"))
             }
         }
+    }
+
+    /// Zera o visor (a tecla C e o Esc).
+    fn clear(&mut self) {
+        self.expr.clear();
+        self.result = None;
+        self.error = None;
     }
 }
 
@@ -391,55 +409,211 @@ pub struct Outcome {
     pub status: Option<String>,
 }
 
+/// O que uma tecla do keypad faz: só EDITA a string da expressão (o parser e o
+/// caminho de colar funções no campo continuam sendo os mesmos).
+#[derive(Clone, Copy)]
+enum KeyAct {
+    Insert(&'static str),
+    Backspace,
+    Clear,
+    Eval,
+}
+
+/// O teclado 4×5: dígitos claros, operadores fundos e o `=` no accent. A última
+/// fileira tem cinco teclas (C, parênteses, `%` e `=`) e divide a MESMA largura
+/// — as teclas acima continuam 4 por linha.
+const KEYPAD: [&[(&str, KeyAct, PadKey)]; 5] = [
+    &[
+        ("7", KeyAct::Insert("7"), PadKey::Digit),
+        ("8", KeyAct::Insert("8"), PadKey::Digit),
+        ("9", KeyAct::Insert("9"), PadKey::Digit),
+        ("÷", KeyAct::Insert("/"), PadKey::Op),
+    ],
+    &[
+        ("4", KeyAct::Insert("4"), PadKey::Digit),
+        ("5", KeyAct::Insert("5"), PadKey::Digit),
+        ("6", KeyAct::Insert("6"), PadKey::Digit),
+        ("×", KeyAct::Insert("*"), PadKey::Op),
+    ],
+    &[
+        ("1", KeyAct::Insert("1"), PadKey::Digit),
+        ("2", KeyAct::Insert("2"), PadKey::Digit),
+        ("3", KeyAct::Insert("3"), PadKey::Digit),
+        ("−", KeyAct::Insert("-"), PadKey::Op),
+    ],
+    &[
+        ("0", KeyAct::Insert("0"), PadKey::Digit),
+        (".", KeyAct::Insert("."), PadKey::Digit),
+        ("⌫", KeyAct::Backspace, PadKey::Op),
+        ("+", KeyAct::Insert("+"), PadKey::Op),
+    ],
+    &[
+        ("C", KeyAct::Clear, PadKey::Op),
+        ("(", KeyAct::Insert("("), PadKey::Op),
+        (")", KeyAct::Insert(")"), PadKey::Op),
+        ("%", KeyAct::Insert("%"), PadKey::Op),
+        ("=", KeyAct::Eval, PadKey::Accent),
+    ],
+];
+
 /// Desenha a calculadora. `texts` é o histórico de clipboard (o "copiar" cria
 /// uma entrada nova, como no OCR).
 pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut CalcState, texts: &mut History) -> Outcome {
     let mut out = Outcome::default();
 
-    ui.horizontal(|ui| {
-        let width = (ui.available_width() - 44.0).max(120.0);
-        let resp = ui.add(kit::line(&mut state.expr).hint_text(i18n::t(lang, Key::CalcExpression)).desired_width(width));
-        // Enter no campo é o caminho rápido (a pill "=" faz o mesmo).
-        let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if enter || kit::pill(ui, "=", true).clicked() {
+    kit::column(ui, CONTENT_W, |ui| {
+        // Esc = C (o teclado físico continua valendo em qualquer foco).
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            state.clear();
+        }
+
+        // ── visor: expressão (15px) + resultado herói (30px mono accent) ──
+        let width = ui.available_width();
+        kit::card(ui, width, |ui| {
+            let skin = Skin::of(ui);
+            let field_w = ui.available_width();
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut state.expr)
+                    .frame(egui::Frame::NONE)
+                    .font(egui::FontId::proportional(15.0))
+                    .text_color(skin.text)
+                    .hint_text(i18n::t(lang, Key::CalcExpression))
+                    .margin(egui::Margin::symmetric(0, 4))
+                    .desired_width(field_w),
+            );
+            // Digitou? O erro da conta anterior sai do visor (senão a mensagem
+            // fica mentindo sobre a expressão que está na tela).
+            if field.changed() {
+                state.error = None;
+            }
+            // ⌫ fora do campo apaga o último caractere (com o campo focado o
+            // próprio TextEdit cuida disso).
+            if !field.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Backspace)) {
+                state.expr.pop();
+                state.error = None;
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    match (&state.error, &state.result) {
+                        // Erro ocupa o lugar do resultado, em corpo menor: a
+                        // mensagem é uma frase, não um número.
+                        (Some(message), _) => {
+                            ui.label(egui::RichText::new(message).color(skin.danger));
+                        }
+                        (None, Some(value)) => {
+                            let label = egui::Label::new(egui::RichText::new(value).font(egui::FontId::monospace(30.0)).strong().color(skin.accent))
+                                .truncate()
+                                .sense(egui::Sense::click());
+                            let resp = ui.add(label).on_hover_text(i18n::t(lang, Key::CopyValue));
+                            if resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            }
+                            // O resultado inteiro é copiável (mesmo caminho do
+                            // "Copiar" dos outros painéis: vira entrada nova).
+                            if resp.clicked() {
+                                let (changed, status) = copy_new_text(texts, lang, value);
+                                out.history_changed |= changed;
+                                out.status = Some(status);
+                            }
+                        }
+                        (None, None) => {
+                            ui.label(egui::RichText::new("—").font(egui::FontId::monospace(30.0)).color(skin.muted));
+                        }
+                    }
+                });
+            });
+        });
+
+        // Enter avalia de qualquer foco (depois de clicar no keypad o campo
+        // perde o foco, e a tecla não pode "morrer").
+        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             out.status = state.evaluate(lang);
         }
-    });
-    ui.add_space(8.0);
 
-    if let Some(value) = state.result.clone() {
-        let skin = crate::ui::Skin::of(ui);
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(&value).size(28.0).strong().color(skin.text));
-            if kit::pill(ui, i18n::t(lang, Key::CopyValue), false).clicked() {
-                let (changed, status) = copy_new_text(texts, lang, &value);
-                out.history_changed |= changed;
-                out.status = Some(status);
+        // ── keypad 4×5 ────────────────────────────────────────────────
+        ui.add_space(12.0);
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(KEY_GAP, KEY_GAP);
+            for row in KEYPAD {
+                // Cada fileira calcula a própria largura de tecla: a última tem
+                // cinco e divide o mesmo espaço.
+                let cols = row.len() as f32;
+                let key_w = ((width - (cols - 1.0) * KEY_GAP) / cols).floor();
+                ui.horizontal(|ui| {
+                    for &(label, act, kind) in row {
+                        if !kit::pad(ui, label, kind, key_w).clicked() {
+                            continue;
+                        }
+                        match act {
+                            KeyAct::Insert(text) => {
+                                state.expr.push_str(text);
+                                state.error = None;
+                            }
+                            KeyAct::Backspace => {
+                                state.expr.pop();
+                                state.error = None;
+                            }
+                            KeyAct::Clear => state.clear(),
+                            KeyAct::Eval => out.status = state.evaluate(lang),
+                        }
+                    }
+                });
             }
         });
-        ui.add_space(10.0);
-    }
 
-    ui.label(egui::RichText::new(i18n::t(lang, Key::CalcHistory)).strong().small());
-    ui.add_space(4.0);
-    if state.history.is_empty() {
-        ui.label(egui::RichText::new(i18n::t(lang, Key::CalcEmpty)).weak());
-        return out;
-    }
-    egui::ScrollArea::vertical().id_salt("calc-history").auto_shrink([false, true]).show(ui, |ui| {
-        for line in &state.history {
-            // A linha inteira é clicável: copiar é o único uso de uma conta
-            // antiga (o "quanto deu" vai pro histórico do clipboard).
-            let label = format!("{} = {}", line.expr, line.value);
-            let resp = ui.add(egui::Label::new(egui::RichText::new(label)).sense(egui::Sense::click()).truncate());
-            if resp.clicked() {
-                let (changed, status) = copy_new_text(texts, lang, &line.value);
-                out.history_changed |= changed;
-                out.status = Some(status);
+        // ── histórico no padrão Clipboard ─────────────────────────────
+        ui.add_space(14.0);
+        let skin = Skin::of(ui);
+        ui.label(egui::RichText::new(i18n::t(lang, Key::CalcHistory)).small().color(skin.muted));
+        ui.add_space(4.0);
+        if state.history.is_empty() {
+            kit::card(ui, width, |ui| {
+                let skin = Skin::of(ui);
+                ui.label(egui::RichText::new(i18n::t(lang, Key::CalcEmpty)).color(skin.muted));
+                ui.label(egui::RichText::new(i18n::t(lang, Key::CalcHint)).small().color(skin.muted));
+            });
+            return;
+        }
+        let mut reinsert: Option<usize> = None;
+        let mut copy: Option<String> = None;
+        egui::ScrollArea::vertical().id_salt("calc-history").max_height(HISTORY_H).auto_shrink([false, true]).show(ui, |ui| {
+            for (index, line) in state.history.iter().enumerate() {
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 34.0), egui::Sense::click());
+                if resp.hovered() {
+                    ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
+                }
+                let inner = rect.shrink2(egui::vec2(8.0, 0.0));
+                let mut row = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)));
+                row.add(egui::Label::new(egui::RichText::new(format!("{} =", line.expr)).color(skin.muted)).truncate());
+                row.add_space(6.0);
+                row.label(egui::RichText::new(&line.value).strong().color(skin.text));
+                let mut copied = false;
+                row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if resp.hovered() && kit::ghost(ui, "⧉").on_hover_text(i18n::t(lang, Key::CopyValue)).clicked() {
+                        copied = true;
+                    }
+                });
+                if copied {
+                    copy = Some(line.value.clone());
+                } else if resp.clicked() {
+                    // Clique na linha re-insere a conta no campo (o uso mais
+                    // comum de uma conta antiga é continuar a partir dela).
+                    reinsert = Some(index);
+                }
             }
-            if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        });
+        if let Some(index) = reinsert {
+            if let Some(line) = state.history.get(index) {
+                state.expr = line.expr.clone();
+                state.result = Some(line.value.clone());
+                state.error = None;
             }
+        }
+        if let Some(value) = copy {
+            let (changed, status) = copy_new_text(texts, lang, &value);
+            out.history_changed |= changed;
+            out.status = Some(status);
         }
     });
     out

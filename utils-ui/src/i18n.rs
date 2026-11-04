@@ -132,6 +132,10 @@ pub enum Key {
     Close,
     // opções: o atalho abre o popup no cursor (em vez da janela inteira)
     TogglePopupMode,
+    // opções: som do alarme (caminho do .wav + testar)
+    OptionsAlarmSound,
+    OptionsAlarmSoundHint,
+    OptionsTest,
     // bandeja: menu do ícone
     TrayOpen,
     TrayQuit,
@@ -168,6 +172,8 @@ pub enum Key {
     ShotText,
     ShotSaved,
     ShotSaveFailed,
+    // editor da captura: descarta a pendente e volta pro empty-state
+    ShotDiscard,
     // aba Ferramentas: sub-abas (Relógio, Calculadora, Unidades, Dev)
     ToolsClock,
     CalcTab,
@@ -190,15 +196,21 @@ pub enum Key {
     ClockPomodoroWorkMin,
     ClockPomodoroBreakMin,
     ClockPomodoroCycles,
-    ClockAlarmTime,
     ClockAlarmLabel,
-    ClockAlarmInvalid,
     ClockAlarmRinging,
     ClockAlarmsEmpty,
+    // popover do novo alarme: botão "+ alarme" e os dois steppers
+    ClockAlarmAdd,
+    ClockHour,
+    ClockMinute,
+    // presets do timer (o display mostra e os presets alimentam a duração)
+    ClockPresetMin,
+    ClockEditHint,
     // aba Ferramentas › calculadora
     CalcExpression,
     CalcHistory,
     CalcEmpty,
+    CalcHint,
     CalcSyntax,
     CalcUnbalanced,
     CalcDivZero,
@@ -214,6 +226,7 @@ pub enum Key {
     UnitsValue,
     UnitsFrom,
     UnitsTo,
+    UnitsSwap,
     UnitsInvalid,
     // aba Ferramentas › dev (Base64, URL, hash, UUID, timestamp)
     DevBase64,
@@ -286,6 +299,8 @@ pub enum Key {
     SysKillFailed,
     SysAvg,
     SysMax,
+    // card do rodapé da aba Sistema (bateria + uptime + temperaturas)
+    SysEnergy,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -367,6 +382,9 @@ const KEYS: &[Key] = &[
     Key::AutostartFailed,
     Key::Close,
     Key::TogglePopupMode,
+    Key::OptionsAlarmSound,
+    Key::OptionsAlarmSoundHint,
+    Key::OptionsTest,
     Key::TrayOpen,
     Key::TrayQuit,
     Key::PopupNoResults,
@@ -396,6 +414,7 @@ const KEYS: &[Key] = &[
     Key::ShotText,
     Key::ShotSaved,
     Key::ShotSaveFailed,
+    Key::ShotDiscard,
     Key::ToolsClock,
     Key::CalcTab,
     Key::UnitsTab,
@@ -416,14 +435,18 @@ const KEYS: &[Key] = &[
     Key::ClockPomodoroWorkMin,
     Key::ClockPomodoroBreakMin,
     Key::ClockPomodoroCycles,
-    Key::ClockAlarmTime,
     Key::ClockAlarmLabel,
-    Key::ClockAlarmInvalid,
     Key::ClockAlarmRinging,
     Key::ClockAlarmsEmpty,
+    Key::ClockAlarmAdd,
+    Key::ClockHour,
+    Key::ClockMinute,
+    Key::ClockPresetMin,
+    Key::ClockEditHint,
     Key::CalcExpression,
     Key::CalcHistory,
     Key::CalcEmpty,
+    Key::CalcHint,
     Key::CalcSyntax,
     Key::CalcUnbalanced,
     Key::CalcDivZero,
@@ -438,6 +461,7 @@ const KEYS: &[Key] = &[
     Key::UnitsValue,
     Key::UnitsFrom,
     Key::UnitsTo,
+    Key::UnitsSwap,
     Key::UnitsInvalid,
     Key::DevBase64,
     Key::DevUrl,
@@ -503,6 +527,7 @@ const KEYS: &[Key] = &[
     Key::SysKillFailed,
     Key::SysAvg,
     Key::SysMax,
+    Key::SysEnergy,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -590,6 +615,9 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::AutostartFailed => "Could not change the autostart",
         Key::Close => "Close",
         Key::TogglePopupMode => "Open a quick popup at the cursor",
+        Key::OptionsAlarmSound => "Alarm sound",
+        Key::OptionsAlarmSoundHint => "Path to a .wav file",
+        Key::OptionsTest => "Test",
         Key::TrayOpen => "Open Local Utils",
         Key::TrayQuit => "Quit",
         Key::PopupNoResults => "Nothing found",
@@ -622,6 +650,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::ShotText => "Text to insert",
         Key::ShotSaved => "screenshot saved",
         Key::ShotSaveFailed => "Could not save the screenshot",
+        Key::ShotDiscard => "Discard capture",
         Key::ToolsClock => "Clock",
         Key::CalcTab => "Calculator",
         Key::UnitsTab => "Units",
@@ -643,14 +672,19 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::ClockPomodoroBreakMin => "Break (min)",
         // `{n}` é preenchido pelo chamador (ciclos de trabalho do pomodoro).
         Key::ClockPomodoroCycles => "{n} cycles",
-        Key::ClockAlarmTime => "Alarm (hh:mm)",
         Key::ClockAlarmLabel => "Label",
-        Key::ClockAlarmInvalid => "invalid time — use hh:mm",
         Key::ClockAlarmRinging => "alarm: {label}",
         Key::ClockAlarmsEmpty => "No alarms yet",
+        Key::ClockAlarmAdd => "+ alarm",
+        Key::ClockHour => "Hour",
+        Key::ClockMinute => "Minute",
+        // `{n}` é preenchido pelo chamador (presets de 1/5/10/30 minutos).
+        Key::ClockPresetMin => "+{n} min",
+        Key::ClockEditHint => "Click the display to type the time",
         Key::CalcExpression => "Expression",
         Key::CalcHistory => "History",
         Key::CalcEmpty => "No calculations yet",
+        Key::CalcHint => "Type an expression or use the keypad",
         Key::CalcSyntax => "syntax error",
         Key::CalcUnbalanced => "missing parenthesis",
         Key::CalcDivZero => "division by zero",
@@ -665,6 +699,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::UnitsValue => "Value",
         Key::UnitsFrom => "From",
         Key::UnitsTo => "To",
+        Key::UnitsSwap => "Swap units",
         Key::UnitsInvalid => "enter a number",
         Key::DevBase64 => "Base64",
         Key::DevUrl => "URL",
@@ -712,7 +747,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::UnsupportedType => "not a supported image",
         Key::ConvertWaiting => "waiting",
         Key::ClearDone => "Clear finished",
-        Key::JxlInputOnly => "JXL is input only (no JXL encoder yet)",
+        Key::JxlInputOnly => "JXL is input only (no encoder compatible with our license)",
         // Aba Sistema. "CPU", "Swap" e "PID" são símbolos/técnicos: ficam
         // iguais nos três idiomas (a chave existe pra manter o catálogo único).
         Key::SysCpu => "CPU",
@@ -738,6 +773,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::SysKillFailed => "could not end the process",
         Key::SysAvg => "avg",
         Key::SysMax => "max",
+        Key::SysEnergy => "Energy & system",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)
@@ -929,5 +965,27 @@ mod tests {
         // Símbolos não traduzem.
         assert_eq!(t(Lang::Es, Key::SysCpu), "CPU");
         assert_eq!(t(Lang::Es, Key::SysSwap), "Swap");
+    }
+
+    /// As chaves do lote do som do alarme, do popover do "+ alarme" e do
+    /// descarte da captura têm linha nos TSVs: sem elas a UI cairia no inglês
+    /// sem aviso.
+    #[test]
+    fn chaves_do_som_do_alarme_e_do_descarte_saem_do_catalogo() {
+        assert_eq!(t(Lang::Pt, Key::ClockAlarmAdd), "+ alarme");
+        assert_eq!(t(Lang::Es, Key::ClockAlarmAdd), "+ alarma");
+        assert_eq!(t(Lang::Pt, Key::ClockHour), "Hora");
+        assert_eq!(t(Lang::Pt, Key::ClockMinute), "Minuto");
+        assert_eq!(t(Lang::Pt, Key::OptionsAlarmSound), "Som do alarme");
+        assert_eq!(t(Lang::Es, Key::OptionsAlarmSound), "Sonido de la alarma");
+        assert_eq!(t(Lang::Pt, Key::OptionsAlarmSoundHint), "Caminho de um arquivo .wav");
+        assert_eq!(t(Lang::Es, Key::OptionsAlarmSoundHint), "Ruta de un archivo .wav");
+        assert_eq!(t(Lang::Pt, Key::OptionsTest), "Testar");
+        assert_eq!(t(Lang::Es, Key::OptionsTest), "Probar");
+        assert_eq!(t(Lang::Pt, Key::ShotDiscard), "Descartar captura");
+        assert_eq!(t(Lang::Es, Key::ShotDiscard), "Descartar la captura");
+        // O motivo do JXL é a LICENÇA, não a falta de decodificador.
+        assert!(t(Lang::En, Key::JxlInputOnly).contains("license"));
+        assert!(t(Lang::Pt, Key::JxlInputOnly).contains("licença"));
     }
 }

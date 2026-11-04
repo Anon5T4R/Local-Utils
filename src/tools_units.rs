@@ -13,7 +13,10 @@ use utils_ui::i18n::{self, Key, Lang};
 
 use crate::clipboard_ui::copy_new_text;
 use crate::history::History;
-use crate::ui as kit;
+use crate::ui::{self as kit, Skin};
+
+/// Largura da coluna (o conversor é um card estreito e centralizado).
+const CONTENT_W: f32 = 560.0;
 
 /// Uma unidade: identificador estável (usado pelo `convert`) e quanto ela vale
 /// no padrão da categoria.
@@ -201,64 +204,109 @@ pub struct Outcome {
     pub status: Option<String>,
 }
 
+/// Um lado da conversão: rótulo pequeno ("De"/"Para") e o combo das unidades
+/// da categoria corrente.
+fn unit_combo(ui: &mut egui::Ui, id: &str, label: &str, units: &'static [Unit], index: &mut usize, width: f32) {
+    ui.vertical(|ui| {
+        ui.label(egui::RichText::new(label).small().color(Skin::of(ui).muted));
+        egui::ComboBox::from_id_salt(id).selected_text(units.get(*index).map_or("", |unit| unit.id)).width(width).show_ui(ui, |ui| {
+            for (i, unit) in units.iter().enumerate() {
+                ui.selectable_value(index, i, unit.id);
+            }
+        });
+    });
+}
+
 /// Desenha o conversor. `texts` é o histórico de clipboard (o "copiar" cria uma
 /// entrada nova de texto, como no recopiar da aba Clipboard).
 pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut History) -> Outcome {
     let mut out = Outcome::default();
 
-    ui.horizontal(|ui| {
-        for cat in Category::ALL {
-            if kit::pill(ui, i18n::t(lang, cat.label_key()), state.cat == cat).clicked() && state.cat != cat {
-                state.cat = cat;
-                // Os índices antigos podem não existir na categoria nova.
-                state.from = 0;
-                state.to = state.cat.units().len().saturating_sub(1);
-            }
-        }
-    });
-    ui.add_space(8.0);
-
-    ui.horizontal(|ui| {
-        ui.label(i18n::t(lang, Key::UnitsValue));
-        ui.add(kit::line(&mut state.value).desired_width(140.0));
-    });
-    ui.add_space(6.0);
-
-    let units = state.cat.units();
-    ui.horizontal(|ui| {
-        // "De" → "Para": dois combos com a MESMA lista de unidades.
-        ui.label(i18n::t(lang, Key::UnitsFrom));
-        egui::ComboBox::from_id_salt("units-from").selected_text(units.get(state.from).map_or("", |unit| unit.id)).width(90.0).show_ui(ui, |ui| {
-            for (i, unit) in units.iter().enumerate() {
-                ui.selectable_value(&mut state.from, i, unit.id);
-            }
-        });
-        ui.label(i18n::t(lang, Key::UnitsTo));
-        egui::ComboBox::from_id_salt("units-to").selected_text(units.get(state.to).map_or("", |unit| unit.id)).width(90.0).show_ui(ui, |ui| {
-            for (i, unit) in units.iter().enumerate() {
-                ui.selectable_value(&mut state.to, i, unit.id);
-            }
-        });
-    });
-    ui.add_space(10.0);
-
-    match state.result() {
-        Ok(text) => {
-            let skin = crate::ui::Skin::of(ui);
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(&text).size(26.0).strong().color(skin.text));
-                if kit::pill(ui, i18n::t(lang, Key::CopyValue), false).clicked() {
-                    let (changed, status) = copy_new_text(texts, lang, &text);
-                    out.history_changed |= changed;
-                    out.status = Some(status);
+    kit::column(ui, CONTENT_W, |ui| {
+        // Categoria: segmented control (nível 2), abaixo das pills da aba.
+        ui.horizontal(|ui| {
+            for cat in Category::ALL {
+                if kit::segmented(ui, i18n::t(lang, cat.label_key()), state.cat == cat).clicked() && state.cat != cat {
+                    state.cat = cat;
+                    // Os índices antigos podem não existir na categoria nova.
+                    state.from = 0;
+                    state.to = state.cat.units().len().saturating_sub(1);
                 }
+            }
+        });
+        ui.add_space(12.0);
+
+        let width = ui.available_width();
+        kit::card(ui, width, |ui| {
+            let skin = Skin::of(ui);
+
+            // ── valor digitado, grande (mono) ────────────────────────
+            ui.label(egui::RichText::new(i18n::t(lang, Key::UnitsValue)).small().color(skin.muted));
+            let field_w = ui.available_width();
+            ui.add(
+                egui::TextEdit::singleline(&mut state.value)
+                    .frame(egui::Frame::NONE)
+                    .font(egui::FontId::monospace(30.0))
+                    .text_color(skin.text)
+                    .margin(egui::Margin::symmetric(0, 4))
+                    .desired_width(field_w),
+            );
+            ui.add_space(4.0);
+            kit::hairline(ui);
+            ui.add_space(12.0);
+
+            // ── De / ⇄ / Para ────────────────────────────────────────
+            let units = state.cat.units();
+            let combo_w = ((ui.available_width() - 100.0) / 2.0).max(120.0);
+            ui.horizontal(|ui| {
+                unit_combo(ui, "units-from", i18n::t(lang, Key::UnitsFrom), units, &mut state.from, combo_w);
+                ui.add_space(8.0);
+                // Troca origem e destino de uma vez (o valor digitado fica).
+                ui.vertical(|ui| {
+                    ui.add_space(18.0);
+                    if kit::ghost(ui, "⇄").on_hover_text(i18n::t(lang, Key::UnitsSwap)).clicked() {
+                        std::mem::swap(&mut state.from, &mut state.to);
+                    }
+                });
+                ui.add_space(8.0);
+                unit_combo(ui, "units-to", i18n::t(lang, Key::UnitsTo), units, &mut state.to, combo_w);
             });
-        }
-        Err(key) => {
-            let skin = crate::ui::Skin::of(ui);
-            ui.label(egui::RichText::new(format!("⚠ {}", i18n::t(lang, key))).color(skin.danger));
-        }
-    }
+            ui.add_space(14.0);
+
+            // ── resultado herói (accent, copiável) ───────────────────
+            match state.result() {
+                Ok(text) => {
+                    ui.horizontal(|ui| {
+                        let label = egui::Label::new(egui::RichText::new(&text).font(egui::FontId::monospace(30.0)).strong().color(skin.accent))
+                            .sense(egui::Sense::click());
+                        let resp = ui.add(label).on_hover_text(i18n::t(lang, Key::CopyValue));
+                        if resp.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if let Some(unit) = units.get(state.to) {
+                            ui.label(egui::RichText::new(unit.id).small().color(skin.muted));
+                        }
+                        if resp.clicked() {
+                            let (changed, status) = copy_new_text(texts, lang, &text);
+                            out.history_changed |= changed;
+                            out.status = Some(status);
+                        }
+                    });
+                    // Linha de referência ("1 ft = 30.48 cm"): o par de unidades
+                    // em corpo pequeno, para conferir a escala sem converter.
+                    if let (Some(from), Some(to)) = (state.origin_id(), state.target_id()) {
+                        if let Some(unit_value) = convert(state.cat, 1.0, from, to) {
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new(format!("1 {from} = {} {to}", fmt_value(unit_value))).small().color(skin.muted));
+                        }
+                    }
+                }
+                Err(key) => {
+                    ui.label(egui::RichText::new(format!("⚠ {}", i18n::t(lang, key))).color(skin.danger));
+                }
+            }
+        });
+    });
     out
 }
 

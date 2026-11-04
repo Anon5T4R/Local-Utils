@@ -42,6 +42,9 @@ const MAX_ROWS: usize = 12;
 /// que está aqui: 200 cobre o uso real e evita rebaixar o texto de um histórico
 /// de 500 itens a cada cópia nova.
 const MAX_SNAPSHOT: usize = 200;
+/// Lado do botão de fechar (área de clique folgada) e a largura reservada pra
+/// ele na fileira da busca.
+const CLOSE_BTN: f32 = 30.0;
 /// Quanto do texto entra na busca. Um Ctrl+V com megabytes de texto não pode
 /// virar 200 MB rebaixados no retrato (buscar além disto não é uso real).
 const MAX_HAYSTACK: usize = 4096;
@@ -305,17 +308,22 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
     let frame = egui::Frame::NONE.fill(skin.card).inner_margin(egui::Margin::same(14));
     let mut pick: Option<u128> = None;
     egui::CentralPanel::default().frame(frame).show(ui, |ui| {
-        // Campo de busca auto-focado na abertura + fechar com o mouse (✕):
+        // Campo de busca auto-focado na abertura + fechar com o mouse (×):
         // só Esc/clique-fora (foco) era pouco (feedback do João). Só pede foco
         // uma vez: pedir todo frame roubaria o foco de volta do clique.
         let mut want_close = false;
         ui.horizontal(|ui| {
-            let field = ui.add(kit::line(&mut st.search).hint_text(i18n::t(lang, Key::Search)).desired_width(f32::INFINITY));
+            // O botão de fechar reserva a largura ANTES do campo: com
+            // `desired_width(INFINITY)` o campo comia a linha inteira e o botão
+            // saía pela borda direita.
+            let field = ui.add(
+                kit::line(&mut st.search).hint_text(i18n::t(lang, Key::Search)).desired_width((ui.available_width() - CLOSE_BTN - 8.0).max(120.0)),
+            );
             if !st.focus_requested {
                 field.request_focus();
                 st.focus_requested = true;
             }
-            if kit::ghost(ui, "✕").on_hover_text(i18n::t(lang, Key::Close)).clicked() {
+            if close_button(ui, skin).on_hover_text(i18n::t(lang, Key::Close)).clicked() {
                 want_close = true;
             }
         });
@@ -356,6 +364,20 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
     if let Some(id) = pick {
         st.close_with(&ctx, Some(Cmd::Paste(id)));
     }
+}
+
+/// Botão de fechar do popup: "×" (U+00D7, presente nas fontes do app) com
+/// tinta do tema e área de clique de 30px. O "✕" (U+2715) do v0.2 não existe
+/// no Ubuntu/Hack e saía VAZIO.
+fn close_button(ui: &mut egui::Ui, skin: Skin) -> egui::Response {
+    let font = egui::FontId::proportional(18.0);
+    let galley = ui.painter().layout_no_wrap("×".to_owned(), font, skin.text);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(CLOSE_BTN, CLOSE_BTN), egui::Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
+    }
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, skin.text);
+    resp
 }
 
 /// Uma linha da lista slim: tipo + carimbo em cima, preview embaixo. Sem pin e

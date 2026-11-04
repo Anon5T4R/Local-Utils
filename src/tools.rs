@@ -65,8 +65,19 @@ pub struct Outcome {
 impl ToolsState {
     /// Tique do relógio/alarmes. Chamado no TOPO do frame, com a aba aberta ou
     /// não (o alarme tem que tocar do mesmo jeito). Devolve a mensagem pronta.
-    pub fn tick(&mut self, lang: Lang, clock: &Clock, alarms: &[(String, String)]) -> Option<String> {
-        self.clock.tick(lang, clock, alarms)
+    /// `sound_file` é o `.wav` do config (vazio = bipes do SO).
+    pub fn tick(&mut self, lang: Lang, clock: &Clock, alarms: &[(String, String)], sound_file: &str) -> Option<String> {
+        self.clock.tick(lang, clock, alarms, sound_file)
+    }
+
+    /// O alarme está tocando? (o app corta na primeira interação)
+    pub fn sound_playing(&self) -> bool {
+        self.clock.sound_playing()
+    }
+
+    /// Para o som do alarme na hora.
+    pub fn stop_sound(&mut self) {
+        self.clock.stop_sound();
     }
 
     /// Precisa de frame periódico? (algo rodando, aviso piscando ou alarme
@@ -88,6 +99,8 @@ impl ToolsState {
 pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ToolsState, texts: &mut History, alarms: &mut Vec<(String, String)>) -> Outcome {
     let mut out = Outcome::default();
 
+    // Nível 1 (Relógio · Calculadora · Unidades · Dev) em pills; o hairline e o
+    // respiro separam do nível 2 de cada painel (segmented control).
     ui.horizontal(|ui| {
         for sub in SubTab::ALL {
             if kit::pill(ui, i18n::t(lang, sub.label_key()), state.sub == sub).clicked() {
@@ -95,7 +108,9 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ToolsState, texts: &mut H
             }
         }
     });
-    ui.add_space(6.0);
+    ui.add_space(8.0);
+    kit::hairline(ui);
+    ui.add_space(10.0);
 
     match state.sub {
         SubTab::Clock => {

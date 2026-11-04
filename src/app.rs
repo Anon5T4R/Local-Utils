@@ -449,9 +449,10 @@ impl UtilsApp {
             }
         }
         if opts.save {
-            let (hotkey_spec, exclude) = self.options.saved();
+            let (hotkey_spec, exclude, alarm_sound) = self.options.saved();
             self.cfg.hotkey = hotkey_spec;
             self.cfg.exclude = exclude;
+            self.cfg.alarm_sound = alarm_sound;
             match config::save(APP_ID, &self.cfg) {
                 // Atalho e exclusões são lidos na subida (registro do atalho e
                 // monitor do clipboard): avisa em vez de fingir que já valeu.
@@ -554,9 +555,18 @@ impl eframe::App for UtilsApp {
         // mesmo jeito. O repaint de 500ms é o mesmo do monitor de clipboard;
         // sem ele nada aqui acorda a UI.
         let clock = clipboard_ui::Clock::now();
-        if let Some(message) = self.tools.tick(self.cfg.lang, &clock, &self.cfg.alarms) {
+        if let Some(message) = self.tools.tick(self.cfg.lang, &clock, &self.cfg.alarms, &self.cfg.alarm_sound) {
             self.set_status(message);
             ctx.request_repaint();
+        }
+        // Som do alarme: o ack do usuário corta o toque. Clique, Esc ou a
+        // janela voltando ao foco ("abrir o app") contam — digitar não, senão
+        // quem estivesse escrevendo na hora do alarme o silenciaria sem ouvir.
+        let ack = ctx.input(|i| {
+            i.pointer.any_click() || i.key_pressed(egui::Key::Escape) || i.events.iter().any(|e| matches!(e, egui::Event::WindowFocused(true)))
+        });
+        if ack && self.tools.sound_playing() {
+            self.tools.stop_sound();
         }
         if self.tools.wants_repaint(&self.cfg.alarms) {
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
@@ -627,7 +637,10 @@ impl eframe::App for UtilsApp {
             });
         });
 
-        egui::containers::Panel::bottom("rodape").show(ui, |ui| {
+        // Rodapé com recuo próprio: nunca encostado na borda da janela (o texto
+        // de status ficava colado/cortado quando a janela era maximizada).
+        let rodape_frame = egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::symmetric(12, 6));
+        egui::containers::Panel::bottom("rodape").frame(rodape_frame).show(ui, |ui| {
             ui.horizontal(|ui| {
                 if !self.status.is_empty() {
                     ui.label(egui::RichText::new(&self.status).small().weak());
@@ -646,6 +659,7 @@ impl eframe::App for UtilsApp {
 
         let mut outcome = clipboard_ui::Outcome::default();
         let mut shot_status: Option<String> = None;
+        let mut shot_discarded = false;
         let mut tool_status: Option<String> = None;
         let mut tool_cfg = false;
         let mut tool_history = false;
@@ -654,7 +668,10 @@ impl eframe::App for UtilsApp {
         let mut picker_history = false;
         let mut convert_status: Option<String> = None;
         let mut system_status: Option<String> = None;
-        egui::CentralPanel::default().show(ui, |ui| {
+        // Folga nas bordas do painel central: as abas vivem dentro de uma
+        // margem segura em vez de encostar na borda (e o rodapé não é cortado).
+        let centro_frame = egui::Frame::central_panel(ui.style()).inner_margin(egui::Margin::symmetric(16, 10));
+        egui::CentralPanel::default().frame(centro_frame).show(ui, |ui| {
             // Fileira de abas: `selectable_value` marca a ativa e troca o
             // painel na hora (sem estado extra). O rótulo de Ferramentas ganha
             // o "(0:00)" com o timer zerado e um ⏰ que pisca enquanto um aviso
@@ -679,6 +696,7 @@ impl eframe::App for UtilsApp {
                 Tab::Screenshot => {
                     let shot = shot_editor::show(ui, self.cfg.lang, &self.cfg.hotkey_screenshot, self.shot.as_mut());
                     shot_status = shot.status;
+                    shot_discarded = shot.discard;
                 }
                 // Ferramentas: relógio, calculadora, conversor e dev tools.
                 Tab::Tools => {
@@ -727,6 +745,12 @@ impl eframe::App for UtilsApp {
         // cancelado, nada pro rodapé.
         if let Some(status) = shot_status.filter(|s| !s.is_empty()) {
             self.set_status(status);
+            ctx.request_repaint();
+        }
+        // "Descartar captura": a aba volta pro empty-state no MESMO frame
+        // seguinte (sem confirmação — capturar de novo é barato).
+        if shot_discarded {
+            self.shot = None;
             ctx.request_repaint();
         }
         // Ferramentas: o "copiar" de um resultado cria entrada Text nova no
