@@ -1180,9 +1180,9 @@ mod tests {
         assert_eq!(pan.x, rect.width() - size.x, "eixo anão encosta na borda de trás");
         assert!(pan.y >= MIN_VISIBLE - size.y && pan.y <= rect.height() - MIN_VISIBLE, "eixo normal clampado: {pan:?}");
 
-        // Ambos os eixos anões de uma vez.
-        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(40.0, 40.0));
-        let size = egui::vec2(80.0, 60.0);
+        // Ambos os eixos anões de uma vez (soma < 96 nos dois: guarda ativa).
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(30.0, 30.0));
+        let size = egui::vec2(60.0, 50.0);
         let mut pan = egui::vec2(999.0, -999.0);
         clamp_pan(rect, size, &mut pan);
         assert_eq!(pan, egui::vec2(rect.width() - size.x, rect.height() - size.y));
