@@ -83,6 +83,8 @@ pub struct OptionsState {
     new_exclude: String,
     /// Rascunho do autostart (espelha o registro até o próximo toggle).
     autostart: bool,
+    /// Popup no cursor ligado? Vale na hora — só persiste no config.
+    popup_mode: bool,
     /// Modo de captura do atalho: a próxima combinação vira o rascunho.
     capturing: bool,
     /// O Win estava pressionado no frame anterior. O egui não entrega o Super
@@ -99,6 +101,9 @@ pub struct Outcome {
     pub save: bool,
     /// O autostart mudou: gravar a chave Run agora.
     pub autostart: Option<bool>,
+    /// O modo do popup mudou: persistir agora (o efeito é imediato, mas o
+    /// valor que vale é o do config).
+    pub popup_mode: Option<bool>,
     pub export: bool,
     pub import: bool,
 }
@@ -111,6 +116,7 @@ impl OptionsState {
         self.exclude = cfg.exclude.clone();
         self.new_exclude.clear();
         self.autostart = cfg.autostart_ok;
+        self.popup_mode = cfg.popup_instead_of_window;
         // Reabrir sempre começa fora do modo de captura.
         self.capturing = false;
         self.win_held = false;
@@ -159,6 +165,16 @@ pub fn show(ctx: &egui::Context, lang: Lang, state: &mut OptionsState) -> Outcom
             }
         } else {
             check.on_hover_text(t(Key::WindowsOnly));
+        }
+        ui.add_space(10.0);
+
+        // ── popup no cursor (vale na hora) ──────────────────────────
+        // Quem prefere a janela inteira no atalho desmarca aqui: o popup só
+        // troca o que o atalho abre, nada mais do app muda.
+        let mut popup_mode = state.popup_mode;
+        if ui.checkbox(&mut popup_mode, t(Key::TogglePopupMode)).changed() {
+            state.popup_mode = popup_mode;
+            out.popup_mode = Some(popup_mode);
         }
         ui.add_space(10.0);
 

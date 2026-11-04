@@ -119,9 +119,10 @@ mod imp {
             if ev.state != HotKeyState::Pressed {
                 return;
             }
-            // Janela oculta não roda frame: acorda o winit pelo SO (lição do
-            // winctl) e avisa o app pelo canal.
-            winctl::show();
+            // Acorda a UI SEM mostrar janela: quem decide entre popup no cursor
+            // e a janela inteira é o app (config `popup_instead_of_window`), e
+            // ele só roda num frame novo.
+            winctl::wake();
             if let Ok(tx) = events.lock() {
                 let _ = tx.send(HotkeyEvent::Pressed);
             }

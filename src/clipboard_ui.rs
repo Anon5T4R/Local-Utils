@@ -77,6 +77,10 @@ pub struct Outcome {
     pub changed: bool,
     /// Mensagem pronta pra barra de status (já traduzida).
     pub status: Option<String>,
+    /// Pedido de OCR de uma imagem (o app sobe a thread; a leitura é na
+    /// `ocr.rs`). O botão só existe no Windows, mas o campo é sempre lido pelo
+    /// app — no Linux fica sempre `None`.
+    pub ocr: Option<u128>,
 }
 
 /// Estado da aba que sobrevive entre frames (fica no `UtilsApp`).
@@ -94,6 +98,9 @@ pub struct ClipboardUiState {
     edit: Option<EditDraft>,
     /// Texto do diálogo de QR (`None` = fechado).
     qr: Option<String>,
+    /// Texto lido pela OCR (`None` = diálogo fechado). O app semeia com
+    /// [`ClipboardUiState::show_ocr`] quando a thread de leitura termina.
+    ocr: Option<OcrDialog>,
     /// Confirmação do "Limpar" (só o histórico não-pinado sai).
     confirm_clear: bool,
     /// Offset da lista e altura visível do frame anterior. As setas precisam
@@ -113,6 +120,12 @@ impl ClipboardUiState {
     pub fn invalidate(&mut self) {
         self.cache.filter = None;
     }
+
+    /// Abre o diálogo com o texto que a OCR devolveu da imagem `id`.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn show_ocr(&mut self, _id: u128, text: String) {
+        self.ocr = Some(OcrDialog { text });
+    }
 }
 
 impl Default for ClipboardUiState {
@@ -125,6 +138,7 @@ impl Default for ClipboardUiState {
             thumbs: ThumbCache::default(),
             edit: None,
             qr: None,
+            ocr: None,
             confirm_clear: false,
             scroll_offset: 0.0,
             view_height: 0.0,
@@ -140,6 +154,12 @@ struct EditDraft {
     text: String,
 }
 
+/// Texto que a OCR leu de uma imagem. O diálogo só mostra e oferece copiar —
+/// recopiar a imagem original nunca é o que o usuário quer aqui.
+struct OcrDialog {
+    text: String,
+}
+
 /// Ações pedidas pelo desenho deste frame. Ficam separadas porque mutar o
 /// histórico no meio da iteração da lista embaralharia os índices.
 #[derive(Default)]
@@ -149,6 +169,9 @@ struct Actions {
     pin: Option<u128>,
     edit: Option<u128>,
     qr: Option<u128>,
+    /// OCR de uma imagem (o botão só existe no Windows).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    ocr: Option<u128>,
     remove: Option<u128>,
     /// Aviso a mostrar no rodapé em vez de executar a ação (ex.: QR comprido).
     warn: Option<Key>,
@@ -198,7 +221,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     let ids = state.cache.ids.clone();
 
     let mut actions = Actions::default();
-    let modal_open = state.edit.is_some() || state.qr.is_some() || state.confirm_clear;
+    let modal_open = state.edit.is_some() || state.qr.is_some() || state.ocr.is_some() || state.confirm_clear;
 
     // ── teclado ───────────────────────────────────────────────────────
     // Esc limpa a busca mesmo com o campo focado (no piloto Esc fechava a
@@ -292,6 +315,9 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     if let Some(text) = actions.qr.and_then(|id| history.entries().iter().find(|e| e.id == id)).and_then(qr_source) {
         state.qr = Some(text.to_string());
     }
+    if let Some(id) = actions.ocr {
+        out.ocr = Some(id);
+    }
     if let Some(key) = actions.warn {
         out.status = Some(i18n::t(lang, key).to_string());
     }
@@ -304,6 +330,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     // ── diálogos (por cima da lista) ──────────────────────────────────
     edit_modal(&ctx, lang, state, history, &mut out);
     qr_modal(&ctx, lang, state);
+    ocr_modal(&ctx, lang, state, history, &mut out);
     clear_modal(&ctx, lang, state, history, &mut out);
 
     // Mutação (pin/remover/editar) pode mudar o que casa com a busca/filtro
@@ -432,6 +459,13 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
         if entry.kind == Kind::Text && kit::ghost(ui, "✏").on_hover_text(i18n::t(lang, Key::Edit)).clicked() {
             actions.edit = Some(entry.id);
         }
+        // OCR só faz sentido em imagem e só existe no Windows (motores do SO).
+        #[cfg(windows)]
+        {
+            if entry.kind == Kind::Image && kit::ghost(ui, "OCR").on_hover_text(i18n::t(lang, Key::OcrButton)).clicked() {
+                actions.ocr = Some(entry.id);
+            }
+        }
     });
 }
 
@@ -491,8 +525,9 @@ fn paint_thumb(ui: &egui::Ui, rect: egui::Rect, entry: &Entry, thumbs: &mut Thum
     true
 }
 
-/// Rótulo traduzido do tipo (linha de cima da entrada).
-fn kind_label(lang: Lang, kind: Kind) -> &'static str {
+/// Rótulo traduzido do tipo (linha de cima da entrada). Compartilhado com o
+/// popup rápido, que desenha a linha em versão slim.
+pub(crate) fn kind_label(lang: Lang, kind: Kind) -> &'static str {
     let key = match kind {
         Kind::Text => Key::TypeText,
         Kind::Html => Key::TypeHtml,
@@ -509,8 +544,8 @@ fn file_name(path: &str) -> &str {
 }
 
 /// Preview de uma linha: primeira linha do texto, `arquivo +n` ou nada (a
-/// imagem fala pela miniatura).
-fn preview_text(entry: &Entry) -> String {
+/// imagem fala pela miniatura). O popup rápido mostra o mesmo preview.
+pub(crate) fn preview_text(entry: &Entry) -> String {
     match entry.kind {
         Kind::Image => String::new(),
         Kind::Files => {
@@ -550,22 +585,23 @@ fn local_offset_ms() -> i64 {
 }
 
 /// Relógio do frame: agora no fuso local e o deslocamento a aplicar nas
-/// entradas. Lido uma vez por frame (o fuso não muda no meio da lista).
+/// entradas. Lido uma vez por frame (o fuso não muda no meio da lista). O
+/// popup rápido usa o mesmo carimbo da lista.
 #[derive(Clone, Copy)]
-struct Clock {
+pub(crate) struct Clock {
     now_local_ms: i64,
     offset_ms: i64,
 }
 
 impl Clock {
-    fn now() -> Self {
+    pub(crate) fn now() -> Self {
         let utc = i64::try_from(crate::history::now_ms()).unwrap_or(0);
         let offset_ms = local_offset_ms();
         Self { now_local_ms: utc.saturating_add(offset_ms), offset_ms }
     }
 
     /// Carimbo relativo: agora / H:mm / ontem / dd/mm.
-    fn stamp(&self, lang: Lang, ts_ms: u64) -> String {
+    pub(crate) fn stamp(&self, lang: Lang, ts_ms: u64) -> String {
         let ts = i64::try_from(ts_ms).unwrap_or(0).saturating_add(self.offset_ms);
         let (y, m, d, hh, mm) = civil_parts(ts);
         let (ny, nm, nd, _, _) = civil_parts(self.now_local_ms);
@@ -740,6 +776,60 @@ fn qr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState) {
     }
 }
 
+/// Diálogo do OCR: o texto que o motor do Windows leu da imagem. "Copiar
+/// texto" grava o texto como uma entrada NOVA do histórico (é o resultado que o
+/// usuário quer reusar) e já o põe no clipboard.
+fn ocr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
+    let Some(dialog) = state.ocr.take() else { return };
+    let mut copy = false;
+    let mut cancel = false;
+    let resp = egui::Modal::new(egui::Id::unique("clip-ocr")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
+        kit::begin_dialog(ui);
+        ui.set_width(460.0);
+        ui.heading(i18n::t(lang, Key::OcrButton));
+        ui.add_space(10.0);
+        egui::ScrollArea::vertical().id_salt("clip-ocr-scroll").max_height(320.0).show(ui, |ui| {
+            // Read-only de verdade: o texto lido é resultado, não rascunho —
+            // editar aqui não teria onde gravar.
+            let mut text = dialog.text.clone();
+            ui.add(kit::block(&mut text).interactive(false).desired_width(420.0).desired_rows(12));
+        });
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if kit::pill(ui, i18n::t(lang, Key::CopyText), true).clicked() {
+                    copy = true;
+                }
+                if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                    cancel = true;
+                }
+            });
+        });
+    });
+    if copy {
+        // Entrada nova de texto: o histórico é a lista de "coisas que dá pra
+        // colar de novo", e o OCR é exatamente isso daqui pra frente.
+        let entry = Entry {
+            id: crate::history::new_id(),
+            ts_ms: crate::history::now_ms(),
+            kind: Kind::Text,
+            pinned: false,
+            text: Some(dialog.text.clone()),
+            files: None,
+            image_png: None,
+            thumb_png: None,
+        };
+        history.push(entry.clone());
+        out.changed = true;
+        out.status = Some(match clipboard::write_back(&entry) {
+            Ok(()) => i18n::t(lang, Key::CopiedOk).to_string(),
+            Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed)),
+        });
+    } else if !(cancel || resp.should_close()) {
+        state.ocr = Some(dialog);
+    }
+}
+
 /// Confirmação do "Limpar": só o histórico NÃO fixado sai; as entradas fixadas
 /// ficam (o modal diz isso antes de o usuário confirmar).
 fn clear_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
@@ -846,7 +936,7 @@ impl FilterCache {
         if self.filter == Some(filter) && self.search == search && self.len == len && self.first == first && self.last == last {
             return;
         }
-        let needle = search.trim().to_lowercase();
+        let needle = normalize_search(search);
         self.ids = entries
             .iter()
             .enumerate()
@@ -862,9 +952,34 @@ impl FilterCache {
     }
 }
 
-/// A entrada casa com a busca? Substring sem caixa no texto ou no nome de um
-/// arquivo copiado (a pasta não entra — ninguém busca por `C:\Users`).
+/// A busca normalizada (minúsculas, sem espaço nas pontas) — o critério é o
+/// mesmo na aba Clipboard e no popup rápido (`popup.rs`), então a conta mora
+/// aqui.
+pub(crate) fn normalize_search(search: &str) -> String {
+    search.trim().to_lowercase()
+}
+
+/// Texto pesquisável de uma cópia, já em minúsculas: o conteúdo textual mais
+/// os NOMES dos arquivos copiados (a pasta não entra — ninguém busca por
+/// `C:\Users`). Quem guarda o retrato da lista (o popup) chama isto uma vez por
+/// entrada em vez de rebaixar o texto a cada frame.
+pub(crate) fn search_haystack(text: Option<&str>, files: Option<&[String]>) -> String {
+    let mut hay = text.map(str::to_lowercase).unwrap_or_default();
+    if let Some(files) = files {
+        for file in files {
+            hay.push('\n');
+            hay.push_str(&file_name(file).to_lowercase());
+        }
+    }
+    hay
+}
+
+/// O texto pesquisável casa com a busca já normalizada?
+pub(crate) fn text_matches(haystack: &str, needle: &str) -> bool {
+    needle.is_empty() || haystack.contains(needle)
+}
+
+/// A entrada casa com a busca? Delega pro critério compartilhado com o popup.
 fn entry_matches(entry: &Entry, needle: &str) -> bool {
-    let in_text = entry.text.as_deref().is_some_and(|text| text.to_lowercase().contains(needle));
-    in_text || entry.files.as_deref().is_some_and(|files| files.iter().any(|f| file_name(f).to_lowercase().contains(needle)))
+    text_matches(&search_haystack(entry.text.as_deref(), entry.files.as_deref()), needle)
 }

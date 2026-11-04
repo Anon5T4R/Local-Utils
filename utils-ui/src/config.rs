@@ -39,6 +39,10 @@ pub struct Config {
     /// Apps sensíveis: cópias vindas deles não entram no histórico. Vale no
     /// próximo arranque (o monitor guarda a lista na subida).
     pub exclude: Vec<String>,
+    /// O atalho global abre o POPUP rápido no cursor em vez da janela
+    /// principal (`popup.rs`). Vale na hora: quem prefere a janela inteira
+    /// desmarca nas opções.
+    pub popup_instead_of_window: bool,
 }
 
 impl Default for Config {
@@ -49,6 +53,7 @@ impl Default for Config {
             hotkey: DEFAULT_HOTKEY.to_string(),
             autostart_ok: false,
             exclude: DEFAULT_EXCLUDE.iter().copied().map(str::to_string).collect(),
+            popup_instead_of_window: true,
         }
     }
 }
@@ -129,6 +134,7 @@ mod tests {
         assert_eq!(cfg.hotkey, DEFAULT_HOTKEY);
         assert!(!cfg.autostart_ok);
         assert_eq!(cfg.exclude.len(), DEFAULT_EXCLUDE.len());
+        assert!(cfg.popup_instead_of_window, "o popup no cursor nasce ligado");
 
         std::fs::remove_dir_all(&dir).ok();
     }

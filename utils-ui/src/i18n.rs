@@ -130,9 +130,21 @@ pub enum Key {
     WindowsOnly,
     AutostartFailed,
     Close,
+    // opções: o atalho abre o popup no cursor (em vez da janela inteira)
+    TogglePopupMode,
     // bandeja: menu do ícone
     TrayOpen,
     TrayQuit,
+    // popup rápido: busca sem resultado
+    PopupNoResults,
+    // colar direto na janela em foco (o popup manda Ctrl+V)
+    PasteFailed,
+    // OCR das imagens do histórico
+    OcrButton,
+    OcrReading,
+    OcrEmpty,
+    OcrFailed,
+    CopyText,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -213,8 +225,16 @@ const KEYS: &[Key] = &[
     Key::WindowsOnly,
     Key::AutostartFailed,
     Key::Close,
+    Key::TogglePopupMode,
     Key::TrayOpen,
     Key::TrayQuit,
+    Key::PopupNoResults,
+    Key::PasteFailed,
+    Key::OcrButton,
+    Key::OcrReading,
+    Key::OcrEmpty,
+    Key::OcrFailed,
+    Key::CopyText,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -301,8 +321,16 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::WindowsOnly => "Available on Windows only",
         Key::AutostartFailed => "Could not change the autostart",
         Key::Close => "Close",
+        Key::TogglePopupMode => "Open a quick popup at the cursor",
         Key::TrayOpen => "Open Local Utils",
         Key::TrayQuit => "Quit",
+        Key::PopupNoResults => "Nothing found",
+        Key::PasteFailed => "Could not paste into the active window",
+        Key::OcrButton => "OCR",
+        Key::OcrReading => "reading the image…",
+        Key::OcrEmpty => "no text found in the image",
+        Key::OcrFailed => "Could not read the image",
+        Key::CopyText => "Copy text",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)
@@ -376,5 +404,20 @@ mod tests {
         assert_eq!(t(Lang::Pt, Key::PressKeysHint), "Pressione o novo atalho… (Esc cancela)");
         assert_eq!(t(Lang::Es, Key::ClearAll), "Borrar todo");
         assert_eq!(t(Lang::Es, Key::PressKeysHint), "Pulse el nuevo atajo… (Esc cancela)");
+    }
+
+    /// As chaves do v0.2 (popup no cursor, colar direto e OCR) têm linha nos
+    /// TSVs: sem elas a UI cairia no inglês sem aviso.
+    #[test]
+    fn chaves_do_popup_e_do_ocr_saem_do_catalogo() {
+        assert_eq!(t(Lang::Pt, Key::TogglePopupMode), "Abrir um popup rápido no cursor");
+        assert_eq!(t(Lang::Pt, Key::PopupNoResults), "Nada encontrado");
+        assert_eq!(t(Lang::Pt, Key::CopyText), "Copiar texto");
+        assert_eq!(t(Lang::Pt, Key::OcrFailed), "Não foi possível ler a imagem");
+        assert_eq!(t(Lang::Es, Key::TogglePopupMode), "Abrir una ventana emergente rápida en el cursor");
+        assert_eq!(t(Lang::Es, Key::CopyText), "Copiar texto");
+        assert_eq!(t(Lang::Es, Key::PopupNoResults), "Nada encontrado");
+        // "OCR" não traduz.
+        assert_eq!(t(Lang::Pt, Key::OcrButton), "OCR");
     }
 }

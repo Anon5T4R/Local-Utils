@@ -14,6 +14,7 @@
 #![cfg(windows)]
 
 use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::OnceLock;
 
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM};
@@ -27,6 +28,11 @@ const WINDOW_TITLE: &str = "Local Utils";
 
 /// HWND da janela egui, descoberto no 1º frame e cacheado (0 = ainda não achou).
 static HWND_CACHE: AtomicIsize = AtomicIsize::new(0);
+
+/// `Context` do egui, guardado no 1º frame: é o que permite acordar a UI de
+/// fora do ciclo de pintura (thread da bandeja e do atalho global) sem mostrar
+/// janela nenhuma — ver [`wake`].
+static REPAINT: OnceLock<eframe::egui::Context> = OnceLock::new();
 
 struct EnumCtx {
     pid: u32,
@@ -96,6 +102,37 @@ pub fn hide() {
             let _ = ShowWindow(h, SW_HIDE);
         }
     }
+}
+
+/// Guarda o `Context` do egui (chamado a cada frame; só o primeiro vale).
+pub fn install_repaint(ctx: &eframe::egui::Context) {
+    let _ = REPAINT.set(ctx.clone());
+}
+
+/// Acorda a UI **sem mostrar janela nenhuma**: o `request_repaint` atravessa o
+/// event loop (UserEvent) e, com a janela principal escondida, o eframe deste
+/// fork roda o frame e pinta viewports invisíveis direto. É o que permite o
+/// popup do atalho nascer com a janela principal na bandeja.
+pub fn wake() {
+    if let Some(ctx) = REPAINT.get() {
+        ctx.request_repaint();
+    }
+}
+
+/// Posição do cursor em POINTS (px do SO ÷ `pixels_per_point`). O popup é o
+/// único interessado: ele nasce colado no ponteiro, que pode estar sobre outra
+/// janela — fora do nosso viewport, o egui não tem evento nenhum.
+pub fn cursor_pos(ppp: f32) -> Option<eframe::egui::Pos2> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    if ppp <= 0.0 {
+        return None;
+    }
+    let mut pt = POINT::default();
+    // SAFETY: GetCursorPos só escreve na struct local.
+    unsafe { GetCursorPos(&mut pt) }.ok()?;
+    Some(eframe::egui::pos2(pt.x as f32 / ppp, pt.y as f32 / ppp))
 }
 
 /// Bombeia mensagens do Win32 até o loop terminar. **Bloqueia**: roda na thread

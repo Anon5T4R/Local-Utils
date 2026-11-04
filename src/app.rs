@@ -16,7 +16,9 @@ use crate::clipboard::{self, ClipEvent};
 use crate::clipboard_ui::{self, ClipboardUiState};
 use crate::history;
 use crate::hotkey::{self, HotkeyEvent};
+use crate::ocr::{self, Ocr};
 use crate::options::{self, OptionsState};
+use crate::popup::{self, Popup};
 use crate::transfer;
 use crate::tray::{self, TrayCmd};
 use crate::ui as kit;
@@ -92,6 +94,14 @@ pub struct UtilsApp {
     tray_icon: Option<tray::Tray>,
     /// Eventos do atalho global (registro e tecla pressionada).
     hotkey_rx: Option<Receiver<HotkeyEvent>>,
+    /// Popup rápido do atalho (viewport próprio, no cursor).
+    popup: Popup,
+    /// Colagem pendente do popup: o Ctrl+V roda no frame SEGUINTE, depois que
+    /// o viewport já sumiu — o popup não pode estar na frente da janela que vai
+    /// receber as teclas.
+    popup_paste: Option<u128>,
+    /// OCR das imagens: thread de leitura + cache do último resultado.
+    ocr: Ocr,
     /// Fechar de VERDADE (pedido do updater): sem isto o X só esconde.
     #[cfg(windows)]
     allow_close: bool,
@@ -156,6 +166,9 @@ impl UtilsApp {
             #[cfg(windows)]
             tray_icon,
             hotkey_rx,
+            popup: Popup::default(),
+            popup_paste: None,
+            ocr: Ocr::default(),
             #[cfg(windows)]
             allow_close: false,
         }
@@ -199,7 +212,8 @@ impl UtilsApp {
     }
 
     /// Drena o atalho global: registro (aviso de conflito no rodapé) e a tecla
-    /// pressionada (mostrar/focar a janela).
+    /// pressionada. O atalho abre o popup no cursor (`popup_instead_of_window`,
+    /// o padrão) ou a janela inteira (quem desmarcou nas opções).
     fn drain_hotkey(&mut self, ctx: &egui::Context) {
         let mut eventos = Vec::new();
         while let Some(event) = self.hotkey_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
@@ -208,11 +222,21 @@ impl UtilsApp {
         for event in eventos {
             match event {
                 HotkeyEvent::Pressed => {
-                    // Janela oculta já foi acordada pela thread do atalho
-                    // (winctl); aqui só garantimos o frame seguinte.
-                    #[cfg(windows)]
-                    {
-                        crate::winctl::show();
+                    if self.cfg.popup_instead_of_window {
+                        // Janela de destino capturada ANTES de o popup abrir:
+                        // depois disso o primeiro plano é o próprio popup.
+                        #[cfg(windows)]
+                        {
+                            crate::paste::remember_foreground();
+                        }
+                        self.popup.open(ctx);
+                    } else {
+                        // Janela oculta: o SO precisa mostrar de novo (o frame
+                        // sozinho não pinta a janela escondida).
+                        #[cfg(windows)]
+                        {
+                            crate::winctl::show();
+                        }
                     }
                     ctx.request_repaint();
                 }
@@ -221,6 +245,70 @@ impl UtilsApp {
                 HotkeyEvent::Unavailable => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyUnavailable))),
                 HotkeyEvent::Registered => {}
             }
+        }
+    }
+
+    /// Recopia a entrada e cola na janela que estava em foco antes do popup
+    /// (fluxo do popup: Enter ou clique). Na lista da janela principal nada
+    /// disto roda — lá recopiar é só recopiar.
+    fn paste_entry(&mut self, id: u128) {
+        let lang = self.cfg.lang;
+        // Resultado já dono: o empréstimo do histórico morre aqui e o
+        // `set_status` pode mexer no app.
+        let copied = self.history.entries().iter().find(|e| e.id == id).map(clipboard::write_back);
+        match copied {
+            // A entrada saiu da lista entre o Enter e a colagem.
+            None => {}
+            Some(Err(e)) => self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed))),
+            Some(Ok(())) => {
+                #[cfg(windows)]
+                {
+                    if let Err(e) = crate::paste::paste_into_focused() {
+                        self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::PasteFailed)));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pede a OCR de uma imagem do histórico (botão da linha).
+    fn start_ocr(&mut self, id: u128, ctx: &egui::Context) {
+        let lang = self.cfg.lang;
+        let outcome = {
+            // Empréstimos de campos separados: o pedido lê o histórico e mexe
+            // no estado do OCR ao mesmo tempo.
+            let Some(entry) = self.history.entries().iter().find(|e| e.id == id) else { return };
+            self.ocr.request(entry)
+        };
+        match outcome {
+            // Cache: o texto já está pronto, o modal abre na hora.
+            Ok(Some(text)) => self.clip_ui.show_ocr(id, text),
+            // Thread rodando: o resultado entra pelo `drain_ocr`.
+            Ok(None) => self.set_status(i18n::t(lang, Key::OcrReading).to_string()),
+            Err(e) => self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::OcrFailed))),
+        }
+        ctx.request_repaint();
+    }
+
+    /// Drena o resultado da OCR. Texto vazio não abre modal: avisa no rodapé.
+    fn drain_ocr(&mut self, ctx: &egui::Context) {
+        let lang = self.cfg.lang;
+        while let Some(event) = self.ocr.poll() {
+            match event {
+                ocr::OcrEvent::Done { text, .. } if text.is_empty() => {
+                    self.set_status(format!("⚠ {}", i18n::t(lang, Key::OcrEmpty)));
+                }
+                ocr::OcrEvent::Done { id, text } => self.clip_ui.show_ocr(id, text),
+                ocr::OcrEvent::Failed { error } => {
+                    eprintln!("ocr: {error}");
+                    self.set_status(format!("⚠ {}: {error}", i18n::t(lang, Key::OcrFailed)));
+                }
+            }
+        }
+        // O canal não acorda a UI (mesmo motivo do `clip_rx`): enquanto a
+        // leitura roda, insistimos no repaint.
+        if self.ocr.running() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
     }
 
@@ -306,6 +394,13 @@ impl UtilsApp {
                 Err(e) => self.set_status(format!("⚠ {e}")),
             }
         }
+        // Popup no cursor vale NA HORA (nada do SO é relido): só persiste.
+        if let Some(on) = opts.popup_mode {
+            self.cfg.popup_instead_of_window = on;
+            if let Err(e) = config::save(APP_ID, &self.cfg) {
+                eprintln!("config: {e}");
+            }
+        }
         if opts.export {
             if let Some(path) = transfer::pick_export(&transfer::export_name()) {
                 self.set_status(match transfer::export_to(&path, &self.history) {
@@ -348,11 +443,21 @@ impl eframe::App for UtilsApp {
         #[cfg(windows)]
         {
             crate::winctl::discover();
+            // Context guardado pra thread do atalho poder acordar a UI sem
+            // mostrar a janela principal (o popup abre com ela escondida).
+            crate::winctl::install_repaint(ctx);
             if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close && self.tray_icon.is_some() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 crate::winctl::hide();
                 return; // não processa o resto do frame
             }
+        }
+
+        // Colagem pendente do popup: roda AQUI, no começo do frame — o viewport
+        // do popup já não foi mostrado no frame anterior, então o primeiro plano
+        // é livre pra ir pra janela de destino antes do Ctrl+V.
+        if let Some(id) = self.popup_paste.take() {
+            self.paste_entry(id);
         }
 
         // Bandeja e atalho: canais drenados no início do frame (mesmo padrão do
@@ -369,6 +474,8 @@ impl eframe::App for UtilsApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
         }
         self.drain_clipboard();
+        // OCR: resultado da thread de leitura (modal com o texto).
+        self.drain_ocr(ctx);
 
         // Updater (craft_update): drena o check/instalação pendente (o tick
         // acorda a UI por si). Resultado de um check PEDIDO sai na barra de
@@ -469,6 +576,26 @@ impl eframe::App for UtilsApp {
             // O rodapé já foi desenhado neste frame: sem o pedido de repaint o
             // "copiado ✓" só apareceria no próximo evento do usuário.
             ctx.request_repaint();
+        }
+        // OCR pedido pela linha da imagem: sobe a thread (o resultado entra no
+        // `drain_ocr` dos próximos frames).
+        if let Some(id) = outcome.ocr {
+            self.start_ocr(id, ctx);
+        }
+
+        // Popup rápido: retrato da lista + viewport no cursor. O comando que ele
+        // deixar (Enter/clique) é aplicado no frame seguinte, com o viewport já
+        // fora da frente (ver `popup_paste` no topo do frame). O `take_cmd` vem
+        // ANTES do `is_open`: quando o popup escolhe um item ele já se fecha no
+        // próprio frame, e o comando não pode ficar preso.
+        if let Some(popup::Cmd::Paste(id)) = self.popup.take_cmd() {
+            self.popup.close();
+            self.popup_paste = Some(id);
+            ctx.request_repaint();
+        }
+        if self.popup.is_open() {
+            self.popup.sync(&self.history);
+            popup::show(ctx, self.cfg.lang, &self.popup);
         }
 
         // Opções (engrenagem): por cima do painel central e abaixo do prompt de

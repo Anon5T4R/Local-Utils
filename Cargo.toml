@@ -81,7 +81,12 @@ winreg = "0.55"
 # carimbos relativos da lista). WindowsAndMessaging cobre também o winctl
 # (ShowWindow/EnumWindows/GetMessageW da bandeja e do atalho global).
 # Input_KeyboardAndMouse: GetAsyncKeyState (a captura do atalho nas opções
-# pergunta ao SO se o Win está pressionado — o egui não expõe o Super).
+# pergunta ao SO se o Win está pressionado — o egui não expõe o Super) e o
+# SendInput do "colar direto" (`paste.rs`).
+# OCR nativo (`ocr.rs`): Media_Ocr (Windows.Media.Ocr), Graphics_Imaging
+# (SoftwareBitmap do motor) e Storage_Streams (DataWriter monta o IBuffer do
+# RGBA). WinRT (RoInitialize) porque o motor exige apartamento COM na thread
+# que chama — a leitura roda numa thread própria.
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -89,9 +94,13 @@ windows = { version = "0.62", features = [
     "Win32_System_LibraryLoader",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_System_WinRT",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage_Streams",
 ] }
 
 [profile.release]
