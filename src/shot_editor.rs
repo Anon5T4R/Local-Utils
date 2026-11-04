@@ -8,7 +8,10 @@
 //! O canvas desenha o RESULTADO do [`render`] como textura (regerada só quando
 //! algo muda, nunca por frame): a prévia fica 1:1 com o arquivo exportado, sem
 //! um segundo caminho de desenho pra divergir. O pan/zoom segue o molde do
-//! viewer do local-image — roda do mouse ancorada no cursor.
+//! viewer do local-image — roda do mouse ancorada no cursor. A ferramenta
+//! Select mexe no que já existe: arrastar SOBRE uma anotação a move (um passo
+//! de desfazer por arraste), Del apaga a selecionada; arrastar em área vazia
+//! continua sendo pan.
 //!
 //! O [`render`] é puro (nada de SO, nada de egui além das cores) e é ele que os
 //! testes cobrem: tamanho, região afetada por cada tipo de anotação, crop e
@@ -30,14 +33,16 @@ use crate::ui as kit;
 /// nenhuma fonte nova entra no repo.
 const FONT_TTF: &[u8] = include_bytes!("../libs/egui/crates/epaint_default_fonts/fonts/Ubuntu-Light.ttf");
 
-/// Paleta curta da barra; o resto sai do seletor livre do egui.
-const PALETTE: [egui::Color32; 6] = [
+/// Paleta curta da barra; o resto sai do seletor livre do egui. O branco no fim
+/// é o caso "anotar por cima de captura escura" (contraste no fundo escuro).
+const PALETTE: [egui::Color32; 7] = [
     egui::Color32::from_rgb(230, 57, 70),
     egui::Color32::from_rgb(244, 162, 97),
     egui::Color32::from_rgb(255, 214, 10),
     egui::Color32::from_rgb(42, 157, 143),
     egui::Color32::from_rgb(69, 123, 157),
     egui::Color32::from_rgb(38, 38, 38),
+    egui::Color32::WHITE,
 ];
 /// Passos de desfazer guardados. Cada passo é uma cópia da lista — barata pra
 /// o punhado de anotações de uma captura.
@@ -52,6 +57,9 @@ const STRENGTH_DEFAULT: u32 = 8;
 const TEXT_DEFAULT: f32 = 28.0;
 /// Abaixo disto um arraste não vira anotação (clique acidental).
 const MIN_DRAG: f32 = 3.0;
+/// Tolerância do hit-test em px de TELA: convertida pra px da imagem na escala
+/// atual, com piso de 1 px de imagem (no zoom alto o alvo não some).
+const HIT_TOL_SCREEN: f32 = 6.0;
 
 /// Ponto em PIXELS da imagem base.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -84,6 +92,107 @@ pub enum Annotation {
     Text { pos: Pt, cor: egui::Color32, tam: f32, texto: String },
     Pixelate { rect: Rect, forca: u32 },
     Blur { rect: Rect, forca: u32 },
+}
+
+impl Annotation {
+    /// Cópia deslocada em px da imagem base. Mosaico/desfoque guardam canto
+    /// inteiro: anda só o canto e o w/h fica.
+    fn translated(&self, dx: f32, dy: f32) -> Annotation {
+        match self {
+            Annotation::Rect { a, b, cor, espessura } => {
+                Annotation::Rect { a: Pt::new(a.x + dx, a.y + dy), b: Pt::new(b.x + dx, b.y + dy), cor: *cor, espessura: *espessura }
+            }
+            Annotation::Arrow { a, b, cor, espessura } => {
+                Annotation::Arrow { a: Pt::new(a.x + dx, a.y + dy), b: Pt::new(b.x + dx, b.y + dy), cor: *cor, espessura: *espessura }
+            }
+            Annotation::Text { pos, cor, tam, texto } => {
+                Annotation::Text { pos: Pt::new(pos.x + dx, pos.y + dy), cor: *cor, tam: *tam, texto: texto.clone() }
+            }
+            Annotation::Pixelate { rect, forca } => Annotation::Pixelate { rect: rect_shifted(*rect, dx, dy), forca: *forca },
+            Annotation::Blur { rect, forca } => Annotation::Blur { rect: rect_shifted(*rect, dx, dy), forca: *forca },
+        }
+    }
+
+    /// Caixa da anotação em px da base — só pro contorno de seleção.
+    fn bounds(&self) -> (Pt, Pt) {
+        match self {
+            Annotation::Rect { a, b, espessura, .. } | Annotation::Arrow { a, b, espessura, .. } => {
+                // O traço é centrado na linha: meia espessura pra fora dela.
+                let d = espessura * 0.5 + 1.0;
+                (Pt::new(a.x.min(b.x) - d, a.y.min(b.y) - d), Pt::new(a.x.max(b.x) + d, a.y.max(b.y) + d))
+            }
+            Annotation::Text { pos, tam, texto, .. } => (Pt::new(pos.x, pos.y), Pt::new(pos.x + text_width(texto, *tam), pos.y + *tam)),
+            Annotation::Pixelate { rect, .. } | Annotation::Blur { rect, .. } => {
+                (Pt::new(rect.x as f32, rect.y as f32), Pt::new((rect.x + rect.w) as f32, (rect.y + rect.h) as f32))
+            }
+        }
+    }
+
+    /// O ponto cai na anotação? `tol` já em px da imagem; a espessura do
+    /// próprio traço entra por cima (é o que o usuário vê pintado).
+    fn hit(&self, p: Pt, tol: f32) -> bool {
+        match self {
+            Annotation::Rect { a, b, espessura, .. } => {
+                let t = tol + espessura * 0.5;
+                let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
+                let (x1, y1) = (a.x.max(b.x), a.y.max(b.y));
+                let cantos = [Pt::new(x0, y0), Pt::new(x1, y0), Pt::new(x1, y1), Pt::new(x0, y1)];
+                [(0_usize, 1_usize), (1, 2), (2, 3), (3, 0)].iter().any(|&(i, j)| dist_to_segment(p, cantos[i], cantos[j]) <= t)
+            }
+            Annotation::Arrow { a, b, espessura, .. } => {
+                let t = tol + espessura * 0.5;
+                if dist_to_segment(p, *a, *b) <= t {
+                    return true;
+                }
+                // A ponta pinta duas linhas (mesma geometria do `arrow`).
+                let (dx, dy) = (b.x - a.x, b.y - a.y);
+                let len = dx.hypot(dy);
+                if len < 1.0 {
+                    return false;
+                }
+                let head = (len * 0.25).clamp(12.0, 60.0) + espessura;
+                let base = dy.atan2(dx);
+                [-1.0_f32, 1.0].iter().any(|s| {
+                    let th = base + s * 25.0_f32.to_radians();
+                    dist_to_segment(p, *b, Pt::new(b.x - head * th.cos(), b.y - head * th.sin())) <= t
+                })
+            }
+            Annotation::Text { pos, tam, texto, .. } => {
+                // APROXIMAÇÃO: o desenho real (ab_glyph) usa o avanço de cada
+                // glifo; aqui a caixa é estimada em 0.6*tam por caractere e
+                // `tam` de altura de linha. Só o hit-test usa isto — nenhum
+                // pixel exportado depende da estimativa.
+                let w = text_width(texto, *tam);
+                p.x >= pos.x - tol && p.x <= pos.x + w + tol && p.y >= pos.y - tol && p.y <= pos.y + tam + tol
+            }
+            Annotation::Pixelate { rect, .. } | Annotation::Blur { rect, .. } => {
+                let (x0, y0) = (rect.x as f32, rect.y as f32);
+                let (x1, y1) = (x0 + rect.w as f32, y0 + rect.h as f32);
+                p.x >= x0 - tol && p.x <= x1 + tol && p.y >= y0 - tol && p.y <= y1 + tol
+            }
+        }
+    }
+}
+
+/// Largura ESTIMADA do texto (ver [`Annotation::hit`]).
+fn text_width(texto: &str, tam: f32) -> f32 {
+    texto.chars().count() as f32 * 0.6 * tam
+}
+
+/// Distância de um ponto ao segmento (0 quando cai dentro dele).
+fn dist_to_segment(p: Pt, a: Pt, b: Pt) -> f32 {
+    let (vx, vy) = (b.x - a.x, b.y - a.y);
+    let (px, py) = (p.x - a.x, p.y - a.y);
+    let len2 = vx * vx + vy * vy;
+    let t = if len2 <= f32::EPSILON { 0.0 } else { ((px * vx + py * vy) / len2).clamp(0.0, 1.0) };
+    (px - vx * t).hypot(py - vy * t)
+}
+
+/// Canto do retângulo deslocado e arredondado (w/h intactos).
+fn rect_shifted(r: Rect, dx: f32, dy: f32) -> Rect {
+    let x = (r.x as f32 + dx).round();
+    let y = (r.y as f32 + dy).round();
+    Rect { x: x.max(0.0) as u32, y: y.max(0.0) as u32, w: r.w, h: r.h }
 }
 
 /// Lista de anotações + crop + pilha de desfazer. Puro: nenhum tipo de SO.
@@ -139,6 +248,41 @@ impl Edits {
         !self.undo.is_empty()
     }
 
+    /// Anotação sob o ponto (px da base), da MAIS RECENTE pra mais antiga: o
+    /// que está por cima é o que o clique pega.
+    pub fn hit_test(&self, p: Pt, tol: f32) -> Option<usize> {
+        self.list.iter().enumerate().rev().find(|(_, an)| an.hit(p, tol)).map(|(idx, _)| idx)
+    }
+
+    /// Fecha um passo de desfazer sem mudar nada: o arraste inteiro vira UM
+    /// passo, aberto no primeiro deslocamento (não por frame).
+    pub fn checkpoint(&mut self) {
+        self.snapshot();
+    }
+
+    /// Repõe a anotação `idx` como `origem` deslocada de (dx, dy) — o delta é
+    /// TOTAL desde o começo do arraste; assim o arredondamento da região não
+    /// acumula (com delta por frame o arraste travaria no zoom alto).
+    pub fn translate(&mut self, idx: usize, origem: &Annotation, dx: f32, dy: f32) -> bool {
+        match self.list.get_mut(idx) {
+            Some(slot) => {
+                *slot = origem.translated(dx, dy);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Remove uma anotação (desfazível). `false` = índice fora da lista.
+    pub fn remove(&mut self, idx: usize) -> bool {
+        if idx >= self.list.len() {
+            return false;
+        }
+        self.snapshot();
+        self.list.remove(idx);
+        true
+    }
+
     fn snapshot(&mut self) {
         self.undo.push((self.list.clone(), self.crop));
         if self.undo.len() > UNDO_MAX {
@@ -181,7 +325,8 @@ pub fn render(base: &RgbaImage, crop: Option<Rect>, annotations: &[Annotation]) 
 /// Ferramenta ativa da barra.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Tool {
-    /// Arrasta a imagem (pan). A roda dá zoom em qualquer ferramenta.
+    /// Seleciona e arrasta anotações existentes; arrastar em área vazia dá
+    /// pan. A roda dá zoom em qualquer ferramenta.
     #[default]
     Select,
     Rect,
@@ -209,11 +354,27 @@ impl Tool {
     const ALL: [Tool; 7] = [Tool::Select, Tool::Rect, Tool::Arrow, Tool::Text, Tool::Pixelate, Tool::Blur, Tool::Crop];
 }
 
+/// Arraste de uma anotação em andamento (ferramenta Select).
+struct Moving {
+    idx: usize,
+    /// Cópia de ANTES do arraste: o deslocamento é sempre medido a partir
+    /// dela, nunca acumulado frame a frame.
+    origem: Annotation,
+    /// Ponto da imagem onde o arraste começou.
+    inicio: Pt,
+    /// O passo de desfazer só abre no primeiro deslocamento real.
+    snapshot: bool,
+}
+
 /// Estado da captura pendente (v0.3 guarda UMA: captura nova substitui).
 pub struct Shot {
     base: RgbaImage,
     edits: Edits,
     tool: Tool,
+    /// Anotação selecionada (só existe com `Tool::Select`).
+    selected: Option<usize>,
+    /// Arraste de anotação em andamento.
+    moving: Option<Moving>,
     cor: egui::Color32,
     espessura: f32,
     forca: u32,
@@ -239,6 +400,8 @@ impl Shot {
             base,
             edits: Edits::default(),
             tool: Tool::Select,
+            selected: None,
+            moving: None,
             cor: PALETTE[0],
             espessura: THICK_DEFAULT,
             forca: STRENGTH_DEFAULT,
@@ -292,11 +455,30 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, hotkey: &str, shot: Option<&mut Shot>
     // Ctrl+Z (Command no macOS) desfaz. Consumido antes da barra pra que
     // nenhum campo de texto reclame a tecla.
     if ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z)) && shot.edits.undo() {
+        shot.selected = None;
+        shot.moving = None;
         shot.dirty = true;
         shot.sync_preview(ui.ctx());
     }
 
+    // Del apaga a anotação selecionada. Só há seleção na ferramenta Select,
+    // que não mostra campo de texto: a tecla não é roubada de ninguém. Com um
+    // arraste em andamento o índice do `selected` dançaria — ignora.
+    if shot.tool == Tool::Select && shot.moving.is_none() {
+        if let Some(idx) = shot.selected {
+            if ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)) && shot.edits.remove(idx) {
+                shot.selected = None;
+                shot.dirty = true;
+            }
+        }
+    }
+
     toolbar(ui, lang, shot, &mut out);
+    // A seleção só existe na ferramenta Select: trocou de ferramenta, limpou.
+    if shot.tool != Tool::Select {
+        shot.selected = None;
+        shot.moving = None;
+    }
     ui.separator();
     canvas(ui, shot);
     // Mudou o modelo neste frame? A prévia é regerada no começo do PRÓXIMO —
@@ -338,10 +520,14 @@ fn toolbar(ui: &mut egui::Ui, lang: Lang, shot: &mut Shot, out: &mut Outcome) {
         ui.separator();
         let undo = ui.add_enabled_ui(shot.edits.can_undo(), |ui| kit::pill(ui, t(Key::Undo), false)).inner;
         if undo.clicked() && shot.edits.undo() {
+            shot.selected = None;
+            shot.moving = None;
             shot.dirty = true;
         }
         if kit::pill(ui, t(Key::ClearAnnotations), false).clicked() {
             shot.edits.clear();
+            shot.selected = None;
+            shot.moving = None;
             shot.dirty = true;
         }
         if shot.edits.crop().is_some() && kit::pill(ui, t(Key::CropReset), false).clicked() {
@@ -361,10 +547,15 @@ fn toolbar(ui: &mut egui::Ui, lang: Lang, shot: &mut Shot, out: &mut Outcome) {
 /// Amostra de cor clicável da paleta.
 fn swatch(ui: &mut egui::Ui, cor: egui::Color32, selected: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+    // O anel de seleção usa a cor de destaque: um anel branco sumiria dentro
+    // do branco da paleta.
+    let stroke = if selected {
+        egui::Stroke::new(2.0_f32, ui.visuals().selection.stroke.color)
+    } else {
+        egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(60))
+    };
     let painter = ui.painter();
     painter.rect_filled(rect, egui::CornerRadius::same(4), cor);
-    let stroke =
-        if selected { egui::Stroke::new(2.0_f32, egui::Color32::WHITE) } else { egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(60)) };
     painter.rect_stroke(rect, egui::CornerRadius::same(4), stroke, egui::StrokeKind::Inside);
     resp
 }
@@ -375,13 +566,7 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
     if avail.x < 1.0 || avail.y < 1.0 {
         return;
     }
-    let cursor = match shot.tool {
-        Tool::Select => egui::CursorIcon::Grab,
-        Tool::Text => egui::CursorIcon::Text,
-        _ => egui::CursorIcon::Crosshair,
-    };
     let (rect, resp) = ui.allocate_exact_size(avail, egui::Sense::click_and_drag());
-    let resp = resp.on_hover_cursor(cursor);
     let size = match shot.preview.as_ref() {
         Some(tex) => tex.size_vec2(),
         None => {
@@ -439,15 +624,81 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
     let to_view = |p: Pt| egui::pos2(dest.min.x + (p.x - ox) * scale, dest.min.y + (p.y - oy) * scale);
     let to_img = |p: egui::Pos2| Pt::new((p.x - dest.min.x) / scale.max(0.0001) + ox, (p.y - dest.min.y) / scale.max(0.0001) + oy);
 
+    // Índice que sobrou de um desfazer/crop antigo não pode apontar pra fora.
+    shot.selected = shot.selected.filter(|i| *i < shot.edits.annotations().len());
+
+    // Cursor: sobre uma anotação a Select oferece "mover"; arrastando, "agarrando".
+    let cursor = match shot.tool {
+        Tool::Select if shot.moving.is_some() => egui::CursorIcon::Grabbing,
+        Tool::Select => {
+            let sobre = resp.hover_pos().map(to_img).and_then(|p| shot.edits.hit_test(p, hit_tol(scale)));
+            if sobre.is_some() {
+                egui::CursorIcon::Move
+            } else {
+                egui::CursorIcon::Grab
+            }
+        }
+        Tool::Text => egui::CursorIcon::Text,
+        _ => egui::CursorIcon::Crosshair,
+    };
+    let resp = resp.on_hover_cursor(cursor);
+
     let painter = ui.painter_at(rect);
     if let Some(tex) = shot.preview.as_ref() {
         painter.image(tex.id(), dest, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
     }
 
     match shot.tool {
-        // Selecionar/mover: arrastar desloca a imagem.
+        // Selecionar/mover: apertar SOBRE uma anotação a move; arrastar em área
+        // vazia dá pan (e a roda dá zoom). Sem botão do meio: o clique vazio já
+        // cobre o pan e não disputa com o arraste de anotação.
         Tool::Select => {
-            if resp.dragged() {
+            // Soltar encerra o arraste da anotação.
+            if resp.drag_stopped() {
+                shot.moving = None;
+            }
+            // Onde o arraste nasceu decide: anotação → mover; vazio → pan. O
+            // alvo é medido no ponto do APERTO — quando `drag_started` dispara o
+            // ponteiro já andou o limiar e pode ter saído do traço.
+            if resp.drag_started() {
+                let aperto = ui.input(|i| i.pointer.press_origin());
+                let hit = aperto.map(to_img).and_then(|p| shot.edits.hit_test(p, hit_tol(scale)));
+                match hit {
+                    Some(idx) => {
+                        let origem = shot.edits.annotations().get(idx).cloned();
+                        if let (Some(origem), Some(p)) = (origem, resp.interact_pointer_pos()) {
+                            shot.selected = Some(idx);
+                            shot.moving = Some(Moving { idx, origem, inicio: to_img(p), snapshot: false });
+                        }
+                    }
+                    None => shot.selected = None,
+                }
+            }
+            // Clique parado só seleciona (no vazio, desmarca).
+            if resp.clicked() {
+                shot.selected = resp.interact_pointer_pos().map(to_img).and_then(|p| shot.edits.hit_test(p, hit_tol(scale)));
+            }
+            // Arrastando uma anotação: o deslocamento é o TOTAL desde o começo
+            // (a região é u32 e o arredondamento por frame travaria no zoom alto).
+            let movendo = shot.moving.as_ref().map(|mv| (mv.idx, mv.origem.clone(), mv.inicio, mv.snapshot));
+            if let Some((idx, origem, inicio, snapshot)) = movendo {
+                if let Some(p) = resp.interact_pointer_pos() {
+                    let atual = to_img(p);
+                    let (dx, dy) = (atual.x - inicio.x, atual.y - inicio.y);
+                    if dx.abs() > 0.01 || dy.abs() > 0.01 {
+                        // Um passo de desfazer pro arraste INTEIRO.
+                        if !snapshot {
+                            shot.edits.checkpoint();
+                            if let Some(mv) = shot.moving.as_mut() {
+                                mv.snapshot = true;
+                            }
+                        }
+                        if shot.edits.translate(idx, &origem, dx, dy) {
+                            shot.dirty = true;
+                        }
+                    }
+                }
+            } else if resp.dragged() {
                 let (base_scale, base_off) = fit_base(shot);
                 if shot.fit {
                     shot.pan = base_off;
@@ -506,6 +757,31 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
             painter.rect_stroke(egui::Rect::from_two_pos(pa, pb), egui::CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
         }
     }
+
+    // Seleção: contorno tracejado fino em volta da anotação escolhida.
+    if shot.tool == Tool::Select {
+        if let Some(an) = shot.selected.and_then(|i| shot.edits.annotations().get(i)) {
+            let (p0, p1) = an.bounds();
+            let r = egui::Rect::from_two_pos(to_view(p0), to_view(p1));
+            let stroke = egui::Stroke::new(1.0_f32, ui.visuals().selection.stroke.color);
+            // `StrokeKind` só existe pro `rect_stroke`: pro tracejado ficar
+            // "Outside" a caixa é expandida meia espessura + 1 px de folga.
+            dashed_outline(&painter, r.expand(stroke.width * 0.5 + 1.0), stroke);
+        }
+    }
+}
+
+/// Tolerância do hit-test em px da IMAGEM: o alvo confortável de ~6 px de tela
+/// vira isso na escala atual (nunca menor que 1 px da imagem).
+fn hit_tol(scale: f32) -> f32 {
+    (HIT_TOL_SCREEN / scale.max(0.0001)).max(1.0)
+}
+
+/// Contorno tracejado de um retângulo: o egui só tem `rect_stroke` sólido,
+/// então as quatro arestas viram um caminho fechado com `Shape::dashed_line`.
+fn dashed_outline(painter: &egui::Painter, rect: egui::Rect, stroke: egui::Stroke) {
+    let caminho = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
+    painter.extend(egui::Shape::dashed_line(&caminho, stroke, 4.0, 3.0));
 }
 
 /// Fecha o arraste numa anotação (ou num crop), respeitando o mínimo.
@@ -874,6 +1150,22 @@ mod tests {
         a.pixels().zip(b.pixels()).filter(|(x, y)| x != y).count()
     }
 
+    /// Ponta a e ponta b de uma anotação de linha (Rect/Seta).
+    fn pontos(an: &Annotation) -> Option<(Pt, Pt)> {
+        match an {
+            Annotation::Rect { a, b, .. } | Annotation::Arrow { a, b, .. } => Some((*a, *b)),
+            _ => None,
+        }
+    }
+
+    /// Retângulo de uma anotação de região (Pixelate/Blur).
+    fn rect_da_regiao(an: &Annotation) -> Option<Rect> {
+        match an {
+            Annotation::Pixelate { rect, .. } | Annotation::Blur { rect, .. } => Some(*rect),
+            _ => None,
+        }
+    }
+
     #[test]
     fn sem_anotacao_o_render_devolve_a_base() {
         let base = solid(64, 32);
@@ -985,5 +1277,97 @@ mod tests {
         let base = solid(40, 20);
         let out = render(&base, Some(Rect { x: 30, y: 10, w: 100, h: 100 }), &[]);
         assert_eq!(out.dimensions(), (10, 10));
+    }
+
+    /// Hit-test de cada tipo: em cima da anotação pega, no miolo vazio e fora
+    /// dela não. A espessura do traço entra na tolerância.
+    #[test]
+    fn hit_test_pega_cada_tipo_no_lugar_certo() {
+        // Retângulo vazado: as arestas pegam, o miolo não.
+        let mut edits = Edits::default();
+        edits.push(Annotation::Rect { a: Pt::new(10.0, 10.0), b: Pt::new(60.0, 40.0), cor: egui::Color32::RED, espessura: 2.0 });
+        assert_eq!(edits.hit_test(Pt::new(35.0, 10.0), 2.0), Some(0), "aresta de cima");
+        assert_eq!(edits.hit_test(Pt::new(60.0, 25.0), 2.0), Some(0), "aresta direita");
+        assert_eq!(edits.hit_test(Pt::new(35.0, 25.0), 2.0), None, "miolo vazado");
+        assert_eq!(edits.hit_test(Pt::new(35.0, 4.0), 2.0), None, "fora da borda");
+
+        // Seta: haste e linhas da ponta.
+        let mut edits = Edits::default();
+        edits.push(Annotation::Arrow { a: Pt::new(10.0, 10.0), b: Pt::new(90.0, 90.0), cor: egui::Color32::WHITE, espessura: 2.0 });
+        assert_eq!(edits.hit_test(Pt::new(50.0, 52.0), 2.0), Some(0), "quase na haste");
+        assert_eq!(edits.hit_test(Pt::new(76.0, 85.0), 2.0), Some(0), "na linha da ponta");
+        assert_eq!(edits.hit_test(Pt::new(80.0, 20.0), 2.0), None, "longe da seta");
+
+        // Texto: caixa estimada (0.6*tam por caractere).
+        let mut edits = Edits::default();
+        edits.push(Annotation::Text { pos: Pt::new(10.0, 10.0), cor: egui::Color32::WHITE, tam: 20.0, texto: "abc".to_string() });
+        assert_eq!(edits.hit_test(Pt::new(20.0, 20.0), 0.0), Some(0), "dentro da caixa");
+        assert_eq!(edits.hit_test(Pt::new(60.0, 20.0), 0.0), None, "depois do fim do texto");
+        assert_eq!(edits.hit_test(Pt::new(48.0, 20.0), 2.0), Some(0), "tolerância na borda direita");
+
+        // Região: dentro do retângulo (não só na borda).
+        let mut edits = Edits::default();
+        edits.push(Annotation::Pixelate { rect: Rect { x: 10, y: 10, w: 20, h: 10 }, forca: 8 });
+        assert_eq!(edits.hit_test(Pt::new(15.0, 15.0), 0.0), Some(0), "dentro da região");
+        assert_eq!(edits.hit_test(Pt::new(35.0, 15.0), 0.0), None, "fora da região");
+        assert_eq!(edits.hit_test(Pt::new(31.0, 15.0), 2.0), Some(0), "tolerância na borda");
+    }
+
+    /// Sobreposição: a MAIS RECENTE ganha (é a que aparece por cima).
+    #[test]
+    fn hit_test_prefere_a_anotacao_mais_recente() {
+        let mut edits = Edits::default();
+        edits.push(Annotation::Blur { rect: Rect { x: 0, y: 0, w: 40, h: 40 }, forca: 4 });
+        edits.push(Annotation::Rect { a: Pt::new(10.0, 10.0), b: Pt::new(30.0, 30.0), cor: egui::Color32::RED, espessura: 2.0 });
+        assert_eq!(edits.hit_test(Pt::new(20.0, 10.0), 2.0), Some(1), "a borda do retângulo está por cima");
+        assert_eq!(edits.hit_test(Pt::new(20.0, 20.0), 2.0), Some(0), "só o blur cobre o miolo");
+    }
+
+    /// Mover desloca os DOIS pontos e o arraste inteiro é um passo de desfazer.
+    #[test]
+    fn mover_rect_desloca_os_dois_pontos_em_um_passo_de_undo() {
+        let mut edits = Edits::default();
+        edits.push(Annotation::Rect { a: Pt::new(10.0, 10.0), b: Pt::new(50.0, 30.0), cor: egui::Color32::RED, espessura: 2.0 });
+        let origem = edits.annotations()[0].clone();
+        assert_eq!(edits.hit_test(Pt::new(30.0, 10.0), 2.0), Some(0), "a anotação é pegável antes do arraste");
+
+        edits.checkpoint();
+        // Três frames do MESMO arraste: o delta é sempre medido desde o começo.
+        assert!(edits.translate(0, &origem, 5.0, 0.0));
+        assert!(edits.translate(0, &origem, 10.0, 4.0));
+        assert!(edits.translate(0, &origem, 10.0, 8.0));
+        assert_eq!(pontos(&edits.annotations()[0]), Some((Pt::new(20.0, 18.0), Pt::new(60.0, 38.0))), "os dois pontos andaram");
+
+        assert!(edits.undo());
+        assert_eq!(pontos(&edits.annotations()[0]), Some((Pt::new(10.0, 10.0), Pt::new(50.0, 30.0))), "um passo por arraste inteiro");
+        assert_eq!(edits.annotations().len(), 1, "mover não cria nem duplica");
+    }
+
+    /// Mover a região (u32) mantém w/h e não acumula arredondamento.
+    #[test]
+    fn mover_pixelate_preserva_o_tamanho() {
+        let mut edits = Edits::default();
+        edits.push(Annotation::Pixelate { rect: Rect { x: 10, y: 10, w: 24, h: 16 }, forca: 8 });
+        let origem = edits.annotations()[0].clone();
+        edits.checkpoint();
+        assert!(edits.translate(0, &origem, 12.4, 7.6));
+        assert_eq!(rect_da_regiao(&edits.annotations()[0]), Some(Rect { x: 22, y: 18, w: 24, h: 16 }));
+        assert!(edits.translate(0, &origem, 12.5, 7.5), "trocar o delta usa a origem, não o estado atual");
+        assert_eq!(rect_da_regiao(&edits.annotations()[0]), Some(Rect { x: 23, y: 18, w: 24, h: 16 }));
+    }
+
+    /// Del apaga a selecionada e isso é desfazível.
+    #[test]
+    fn remover_a_anotacao_selecionada_e_desfazivel() {
+        let mut edits = Edits::default();
+        edits.push(Annotation::Blur { rect: Rect { x: 0, y: 0, w: 8, h: 8 }, forca: 4 });
+        edits.push(Annotation::Pixelate { rect: Rect { x: 20, y: 20, w: 8, h: 8 }, forca: 4 });
+        assert!(edits.remove(1));
+        assert_eq!(edits.annotations().len(), 1);
+        assert!(matches!(&edits.annotations()[0], Annotation::Blur { .. }), "removeu a anotação certa");
+        assert!(edits.undo(), "apagar entra no desfazer");
+        assert_eq!(edits.annotations().len(), 2);
+        assert!(!edits.remove(9), "índice fora da lista não faz nada");
+        assert_eq!(edits.annotations().len(), 2);
     }
 }

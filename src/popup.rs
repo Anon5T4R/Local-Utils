@@ -29,12 +29,13 @@ use crate::history::{Entry, History, Kind};
 use crate::ui::{self as kit, Skin};
 
 /// Tamanho do popup (points). Sem decoração, o outer é o próprio conteúdo.
-const POPUP_W: f32 = 480.0;
-const POPUP_H: f32 = 420.0;
+const POPUP_W: f32 = 560.0;
+const POPUP_H: f32 = 460.0;
 /// Distância entre o cursor e o canto do popup.
 const CURSOR_GAP: f32 = 10.0;
-/// Altura da linha compacta (só tipo + preview + carimbo).
-const ROW_H: f32 = 40.0;
+/// Altura da linha compacta (só tipo + preview + carimbo). Folga interna
+/// generosa: texto apertado em linha de 40px cansava (feedback do João).
+const ROW_H: f32 = 50.0;
 /// Quantas cópias o popup lista (as mais recentes que casam com a busca).
 const MAX_ROWS: usize = 12;
 /// Quantas entradas entram no retrato da lista. A busca do popup só enxerga o
@@ -79,6 +80,10 @@ struct State {
     search: String,
     /// Posição do foco na lista FILTRADA (`None` = lista vazia).
     focus: Option<usize>,
+    /// Pede scroll-into-view da linha focada — só quando o foco VEIO DAS SETAS.
+    /// Rolá-la a cada frame brigava com a roda do usuário (bug pago: a lista
+    /// "voltava pro topo" ao tentar descer com o scroll).
+    scroll_to: Option<usize>,
     rows: Vec<Row>,
     /// Canto do popup nesta abertura. Calculado no [`Popup::open`]: se o cursor
     /// decidisse a cada frame, o popup seguiria o mouse enquanto aberto.
@@ -123,6 +128,7 @@ impl Popup {
             st.open = true;
             st.search.clear();
             st.focus = None;
+            st.scroll_to = None;
             st.cmd = None;
             st.focus_requested = false;
             st.focus_sent = false;
@@ -280,9 +286,11 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
         let last = hits.len().saturating_sub(1);
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
             st.focus = Some(st.focus.unwrap_or(0).saturating_add(1).min(last));
+            st.scroll_to = st.focus;
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
             st.focus = Some(st.focus.unwrap_or(0).saturating_sub(1));
+            st.scroll_to = st.focus;
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
             if let Some(row) = st.focus.and_then(|i| hits.get(i)).and_then(|i| st.rows.get(*i)) {
@@ -294,17 +302,28 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
     }
 
     let skin = Skin::of(ui);
-    let frame = egui::Frame::NONE.fill(skin.card).inner_margin(egui::Margin::same(12));
+    let frame = egui::Frame::NONE.fill(skin.card).inner_margin(egui::Margin::same(14));
     let mut pick: Option<u128> = None;
     egui::CentralPanel::default().frame(frame).show(ui, |ui| {
-        // Campo de busca auto-focado na abertura. Só pede uma vez: pedir todo
-        // frame roubaria o foco de volta do clique na lista.
-        let field = ui.add(kit::line(&mut st.search).hint_text(i18n::t(lang, Key::Search)).desired_width(f32::INFINITY));
-        if !st.focus_requested {
-            field.request_focus();
-            st.focus_requested = true;
+        // Campo de busca auto-focado na abertura + fechar com o mouse (✕):
+        // só Esc/clique-fora (foco) era pouco (feedback do João). Só pede foco
+        // uma vez: pedir todo frame roubaria o foco de volta do clique.
+        let mut want_close = false;
+        ui.horizontal(|ui| {
+            let field = ui.add(kit::line(&mut st.search).hint_text(i18n::t(lang, Key::Search)).desired_width(f32::INFINITY));
+            if !st.focus_requested {
+                field.request_focus();
+                st.focus_requested = true;
+            }
+            if kit::ghost(ui, "✕").on_hover_text(i18n::t(lang, Key::Close)).clicked() {
+                want_close = true;
+            }
+        });
+        if want_close {
+            st.close_with(&ctx, None);
+            return;
         }
-        ui.add_space(6.0);
+        ui.add_space(8.0);
 
         if hits.is_empty() {
             ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
@@ -314,13 +333,18 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
         }
 
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            // Respiro entre as linhas (feedback: texto muito colado no outro).
+            ui.spacing_mut().item_spacing.y = 3.0;
+            let mut wanted = st.scroll_to.take();
             for (pos, index) in hits.iter().enumerate() {
                 let Some(row) = st.rows.get(*index) else { continue };
                 let focused = st.focus == Some(pos);
                 let resp = row_ui(ui, lang, &clock, row, focused);
-                if focused && !ui.is_rect_visible(resp.rect) {
-                    // Foco fora da área visível (setas): traz pra tela.
+                // Só rola quando o foco veio das SETAS (ver `State::scroll_to`):
+                // a cada frame brigava com a roda do usuário.
+                if focused && wanted == Some(pos) {
                     ui.scroll_to_rect(resp.rect, None);
+                    wanted = None;
                 }
                 if resp.clicked() {
                     pick = Some(row.id);
@@ -355,9 +379,9 @@ fn row_ui(ui: &mut egui::Ui, lang: Lang, clock: &Clock, row: &Row, focused: bool
         return resp;
     }
 
-    let inner = rect.shrink2(egui::vec2(8.0, 4.0));
+    let inner = rect.shrink2(egui::vec2(10.0, 6.0));
     let mut line = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::LEFT)));
-    line.spacing_mut().item_spacing.y = 1.0;
+    line.spacing_mut().item_spacing.y = 2.0;
     line.horizontal(|ui| {
         ui.label(egui::RichText::new(clipboard_ui::kind_label(lang, row.kind)).small().color(skin.muted));
         ui.label(egui::RichText::new("·").small().color(skin.muted));
