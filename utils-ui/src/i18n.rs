@@ -46,6 +46,10 @@ pub enum Key {
     AppTitle,
     Language,
     Theme,
+    // valores do seletor de tema (o `Appearance::label` é só o código)
+    AppearanceSystem,
+    AppearanceLight,
+    AppearanceDark,
     ForgetKey,
     // verificação de atualização (o prompt é o dialog do craft_update)
     CheckUpdates,
@@ -81,6 +85,14 @@ pub enum Key {
     CopyFailed,
     Pinned,
     Unpinned,
+    // ação do ★ da linha (fixar/desafixar — o texto do estado fica no rodapé)
+    Pin,
+    Unpin,
+    // limpar o histórico: botão da barra de filtros, confirmação e resultado
+    ClearHistory,
+    ClearAll,
+    ClearExplain,
+    HistoryCleared,
     // aba Clipboard: etiqueta do tipo na linha
     TypeText,
     TypeHtml,
@@ -99,6 +111,9 @@ pub enum Key {
     Options,
     Autostart,
     HotkeyGlobal,
+    // captura do atalho (opções): botão e o "pressione as teclas" do campo
+    RegisterHotkey,
+    PressKeysHint,
     HotkeyConflict,
     HotkeyInvalid,
     HotkeyUnavailable,
@@ -128,6 +143,9 @@ const KEYS: &[Key] = &[
     Key::AppTitle,
     Key::Language,
     Key::Theme,
+    Key::AppearanceSystem,
+    Key::AppearanceLight,
+    Key::AppearanceDark,
     Key::ForgetKey,
     Key::CheckUpdates,
     Key::UpToDate,
@@ -157,6 +175,12 @@ const KEYS: &[Key] = &[
     Key::CopyFailed,
     Key::Pinned,
     Key::Unpinned,
+    Key::Pin,
+    Key::Unpin,
+    Key::ClearHistory,
+    Key::ClearAll,
+    Key::ClearExplain,
+    Key::HistoryCleared,
     Key::TypeText,
     Key::TypeHtml,
     Key::TypeRtf,
@@ -171,6 +195,8 @@ const KEYS: &[Key] = &[
     Key::Options,
     Key::Autostart,
     Key::HotkeyGlobal,
+    Key::RegisterHotkey,
+    Key::PressKeysHint,
     Key::HotkeyConflict,
     Key::HotkeyInvalid,
     Key::HotkeyUnavailable,
@@ -202,6 +228,9 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::AppTitle => "Local Utils",
         Key::Language => "Language",
         Key::Theme => "Theme",
+        Key::AppearanceSystem => "System theme",
+        Key::AppearanceLight => "Light",
+        Key::AppearanceDark => "Dark",
         Key::ForgetKey => "Forget key",
         Key::CheckUpdates => "Check for updates",
         Key::UpToDate => "up to date",
@@ -232,6 +261,12 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::CopyFailed => "Could not copy",
         Key::Pinned => "Pinned",
         Key::Unpinned => "Unpinned",
+        Key::Pin => "Pin",
+        Key::Unpin => "Unpin",
+        Key::ClearHistory => "Clear",
+        Key::ClearAll => "Clear all",
+        Key::ClearExplain => "Pinned items are kept",
+        Key::HistoryCleared => "history cleared",
         Key::TypeText => "Plain text",
         Key::TypeHtml => "HTML",
         Key::TypeRtf => "RTF",
@@ -248,6 +283,8 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::Options => "Options",
         Key::Autostart => "Start with Windows",
         Key::HotkeyGlobal => "Global hotkey",
+        Key::RegisterHotkey => "Register shortcut",
+        Key::PressKeysHint => "Press the new shortcut… (Esc cancels)",
         Key::HotkeyConflict => "shortcut already in use",
         Key::HotkeyInvalid => "invalid shortcut — using the default",
         Key::HotkeyUnavailable => "could not register the shortcut",
@@ -297,5 +334,47 @@ mod tests {
         assert_eq!(t(Lang::Es, Key::CheckUpdates), "Buscar actualizaciones");
         // Marca não traduz.
         assert_eq!(t(Lang::Pt, Key::AppTitle), "Local Utils");
+    }
+
+    /// O container `right_to_left` da barra de topo e o rodapé dependem destas
+    /// linhas: filtro "All" e a contagem "{n} items" já pagaram QA em inglês
+    /// quando a linha do TSV faltava — o teste trava as duas no catálogo.
+    #[test]
+    fn contagem_e_filtro_saem_do_catalogo() {
+        assert_eq!(t(Lang::Pt, Key::FilterAll), "Tudo");
+        assert_eq!(t(Lang::Es, Key::FilterAll), "Todo");
+        assert_eq!(t(Lang::En, Key::FilterAll), "All");
+
+        assert_eq!(t(Lang::Pt, Key::ItemsCount), "{n} itens");
+        assert_eq!(t(Lang::Es, Key::ItemsCount), "{n} elementos");
+        assert_eq!(t(Lang::Pt, Key::ItemOne), "{n} item");
+        assert_eq!(t(Lang::En, Key::ItemsCount).replace("{n}", "4"), "4 items");
+        assert_eq!(t(Lang::Pt, Key::ItemsCount).replace("{n}", "4"), "4 itens");
+    }
+
+    /// O seletor de tema não mostra mais o valor em inglês em pt/es.
+    #[test]
+    fn valores_do_tema_traduzem() {
+        assert_eq!(t(Lang::Pt, Key::AppearanceSystem), "Sistema");
+        assert_eq!(t(Lang::Pt, Key::AppearanceLight), "Claro");
+        assert_eq!(t(Lang::Pt, Key::AppearanceDark), "Escuro");
+        assert_eq!(t(Lang::Es, Key::AppearanceSystem), "Sistema");
+        assert_eq!(t(Lang::Es, Key::AppearanceDark), "Oscuro");
+    }
+
+    /// As chaves do v0.1.1 (limpar, pin e captura do atalho) têm linha nos
+    /// TSVs: sem elas a UI cairia no inglês sem nenhum aviso.
+    #[test]
+    fn chaves_novas_saem_do_catalogo() {
+        assert_eq!(t(Lang::Pt, Key::Pin), "Fixar");
+        assert_eq!(t(Lang::Pt, Key::Unpin), "Desafixar");
+        assert_eq!(t(Lang::Pt, Key::ClearHistory), "Limpar");
+        assert_eq!(t(Lang::Pt, Key::ClearAll), "Limpar tudo");
+        assert_eq!(t(Lang::Pt, Key::ClearExplain), "Os itens fixados são mantidos");
+        assert_eq!(t(Lang::Pt, Key::HistoryCleared), "histórico limpo");
+        assert_eq!(t(Lang::Pt, Key::RegisterHotkey), "Registrar atalho");
+        assert_eq!(t(Lang::Pt, Key::PressKeysHint), "Pressione o novo atalho… (Esc cancela)");
+        assert_eq!(t(Lang::Es, Key::ClearAll), "Borrar todo");
+        assert_eq!(t(Lang::Es, Key::PressKeysHint), "Pulse el nuevo atajo… (Esc cancela)");
     }
 }

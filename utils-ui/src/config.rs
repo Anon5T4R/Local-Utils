@@ -14,8 +14,13 @@ use crate::theme::Appearance;
 /// que nasce no primeiro boot; a versão editada nas Opções vai pro config.
 pub const DEFAULT_EXCLUDE: &[&str] = &["local-keys.exe", "localkeys.exe", "keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe"];
 
-/// Atalho global padrão (`win+shift+v`).
-pub const DEFAULT_HOTKEY: &str = "win+shift+v";
+/// Atalho global padrão (`win+alt+v`).
+///
+/// Só vale pra quem ainda NÃO tem atalho gravado: o campo `hotkey` do config é
+/// persistido no primeiro Salvar, e `serde(default)` só entra quando a chave
+/// não existe (config nova). Config antiga com `win+shift+v` salvo continua com
+/// o atalho dela — mudar o padrão não mexe no que o usuário já escolheu.
+pub const DEFAULT_HOTKEY: &str = "win+alt+v";
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 // `default` no container: config de versão anterior (sem os campos novos) é

@@ -20,6 +20,9 @@ pub struct Skin {
     pub card: egui::Color32,
     /// Fundo dos campos DENTRO do diálogo (o "base", o inverso do cartão).
     pub field: egui::Color32,
+    /// Destaque SÓLIDO do tema (estrela de pin, foco da linha, pill primário).
+    /// Vem do `hyperlink_color` — o `selection.bg_fill` é o accent lavado
+    /// (alpha baixo) e sumia como ícone/contorno (pagou no QA do v0.1.0).
     pub accent: egui::Color32,
     /// Texto sobre `accent` (pill primário).
     pub on_accent: egui::Color32,
@@ -41,7 +44,7 @@ impl Skin {
     /// Cores de um `Visuals` qualquer (o `modal_frame` recebe só o `Context`).
     pub fn from_visuals(v: &egui::Visuals) -> Self {
         let text = v.override_text_color.unwrap_or(v.widgets.noninteractive.fg_stroke.color);
-        let accent = v.selection.bg_fill;
+        let accent = v.hyperlink_color;
         let danger = v.error_fg_color;
         Self {
             card: v.extreme_bg_color,
@@ -122,9 +125,6 @@ pub fn pill(ui: &mut egui::Ui, label: &str, primary: bool) -> egui::Response {
 }
 
 /// Pill de ação destrutiva (vermelho do tema — legível nas duas polaridades).
-/// O kit é maior que o primeiro consumidor: a aba Clipboard usa só a tinta
-/// `danger` no botão de remover, e o pill entra quando houver confirmação.
-#[allow(dead_code)]
 pub fn pill_danger(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let skin = Skin::of(ui);
     pill_colored(ui, label, skin.danger, ink_on(skin.danger), false)

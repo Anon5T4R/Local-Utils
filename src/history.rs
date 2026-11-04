@@ -180,6 +180,13 @@ impl History {
         }
     }
 
+    /// Limpa o histórico NÃO fixado (o "Limpar" da aba Clipboard). As entradas
+    /// fixadas ficam — e o cache de bytes passa a contar só o que sobrou.
+    pub fn clear_unpinned(&mut self) {
+        self.entries.retain(|e| e.pinned);
+        self.cur_bytes = self.entries.iter().map(entry_bytes).sum();
+    }
+
     /// Mescla outro histórico (import de `.lutils`) no atual.
     ///
     /// Dedupe em duas etapas: mesmo `id` = a entrada mais nova por `ts_ms`
@@ -570,6 +577,34 @@ mod tests {
         assert_eq!(base.entries().first().map(|e| e.ts_ms), Some(50));
         assert_eq!(base.entries().last().map(|e| e.ts_ms), Some(30), "o conteúdo repetido herda o carimbo mais novo");
         assert!(base.iter().any(|e| e.text.as_deref() == Some("novo")));
+    }
+
+    #[test]
+    fn clear_unpinned_preserva_pinadas_e_recalcula_bytes() {
+        let mut h = History::default();
+        h.push(text_entry("texto solto", 1));
+        h.push(image_entry(5, 40, 2));
+        // 40 do PNG + 8 da miniatura, a única entrada que conta bytes.
+        assert_eq!(h.total_bytes(), 48);
+        let pinada = h.latest().map(|e| e.id).unwrap_or(0);
+        h.toggle_pin(pinada);
+        h.push(text_entry("outro solto", 3));
+        assert_eq!(h.len(), 3);
+
+        h.clear_unpinned();
+
+        assert_eq!(h.len(), 1, "só a entrada fixada sobrevive ao limpar");
+        assert_eq!(h.entries().first().map(|e| e.id), Some(pinada));
+        assert!(h.entries().first().is_some_and(|e| e.pinned));
+        assert_eq!(h.total_bytes(), 48, "o cache de bytes conta só o que sobrou");
+
+        // Depois do limpar, o histórico continua utilizável e a conta segue certa.
+        h.push(image_entry(9, 20, 4));
+        assert_eq!(h.len(), 2);
+        assert_eq!(h.total_bytes(), 48 + 28);
+        h.clear_unpinned();
+        assert_eq!(h.len(), 1, "a imagem nova não era fixada: sai também");
+        assert_eq!(h.total_bytes(), 48);
     }
 
     #[test]

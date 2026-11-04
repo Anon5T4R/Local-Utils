@@ -1,7 +1,8 @@
-//! Janela principal do Local Utils: barra de topo (título, tema/idioma e
-//! check de updates), fileira de abas do roadmap e rodapé de status. A aba
-//! Clipboard (a âncora do app) desenha o histórico em `clipboard_ui.rs`; as
-//! demais ainda são esqueleto e ganham conteúdo na sua versão do roadmap.
+//! Janela principal do Local Utils: barra de topo (só as ações da direita —
+//! um tema/idioma, opções e o check de updates; o título é o da titlebar do
+//! SO), fileira de abas do roadmap e rodapé de status. A aba Clipboard (a
+//! âncora do app) desenha o histórico em `clipboard_ui.rs`; as demais ainda
+//! são esqueleto e ganham conteúdo na sua versão do roadmap.
 
 use std::sync::mpsc::Receiver;
 
@@ -18,9 +19,14 @@ use crate::hotkey::{self, HotkeyEvent};
 use crate::options::{self, OptionsState};
 use crate::transfer;
 use crate::tray::{self, TrayCmd};
+use crate::ui as kit;
 
 pub const APP_ID: &str = "local-utils";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Quanto tempo um status de ação fica no rodapé ("Copiado ✓", "Desafixado"…).
+/// Sem isso a última mensagem ficava presa pra sempre (QA viu o "Desafixado"
+/// sobrevivendo a várias ações depois).
+const STATUS_TTL_MS: u64 = 4_000;
 
 /// Arquivo do histórico de clipboard: mesma pasta da config do app
 /// (`%APPDATA%\local-utils` no Windows, `~/.config/local-utils` fora).
@@ -58,6 +64,10 @@ pub struct UtilsApp {
     cfg: Config,
     /// Mensagem da barra de status (vazia = nada a mostrar).
     status: String,
+    /// Instante (epoch ms) em que o status atual entrou. Status de ação some
+    /// sozinho depois de [`STATUS_TTL_MS`] — sem timer extra: a expiração é
+    /// uma comparação feita no frame.
+    status_since: u64,
     tab: Tab,
     /// Último sequence number processado (dedupe de eventos colados).
     last_seq: u32,
@@ -134,6 +144,7 @@ impl UtilsApp {
         Self {
             cfg,
             status: String::new(),
+            status_since: 0,
             tab: Tab::Clipboard,
             last_seq: 0,
             updater: craft_update::updater::Updater::new(&craft_update::suite::LOCALUTILS, CURRENT_VERSION),
@@ -148,6 +159,28 @@ impl UtilsApp {
             #[cfg(windows)]
             allow_close: false,
         }
+    }
+
+    /// Publica uma mensagem no rodapé e carimba o instante dela: o status de
+    /// ação expira sozinho depois de [`STATUS_TTL_MS`]. Ponto ÚNICO de escrita
+    /// do `status` — atribuir direto furaria a expiração.
+    fn set_status(&mut self, message: String) {
+        self.status = message;
+        self.status_since = history::now_ms();
+    }
+
+    /// Tira do rodapé o status vencido e pede o frame em que ele some (sem
+    /// timer: a conta é refeita a cada frame).
+    fn expire_status(&mut self, ctx: &egui::Context) {
+        if self.status.is_empty() {
+            return;
+        }
+        let idade = history::now_ms().saturating_sub(self.status_since);
+        if idade >= STATUS_TTL_MS {
+            self.status.clear();
+            return;
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(STATUS_TTL_MS - idade));
     }
 
     /// Drena a bandeja. "Sair" encerra DE VERDADE: salva o histórico e mata o
@@ -183,9 +216,9 @@ impl UtilsApp {
                     }
                     ctx.request_repaint();
                 }
-                HotkeyEvent::Conflict => self.status = format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyConflict)),
-                HotkeyEvent::Invalid => self.status = format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyInvalid)),
-                HotkeyEvent::Unavailable => self.status = format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyUnavailable)),
+                HotkeyEvent::Conflict => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyConflict))),
+                HotkeyEvent::Invalid => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyInvalid))),
+                HotkeyEvent::Unavailable => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyUnavailable))),
                 HotkeyEvent::Registered => {}
             }
         }
@@ -226,7 +259,7 @@ impl UtilsApp {
     /// Erro vira status no rodapé em vez de sumir.
     fn save_history(&mut self) {
         if let Err(e) = history::save(&history_path(), &self.history) {
-            self.status = format!("⚠ {e}");
+            self.set_status(format!("⚠ {e}"));
         }
     }
 
@@ -236,9 +269,9 @@ impl UtilsApp {
         self.updater.check_at_start(ctx);
     }
 
-    /// Verifica atualizações agora (botão "Verificar atualizações"). O
-    /// resultado sai na barra de status do rodapé; release nova abre o
-    /// prompt do próprio updater.
+    /// Verifica atualizações agora (o ↻ da barra de topo; o tooltip diz o que
+    /// ele faz). O resultado sai na barra de status do rodapé; release nova
+    /// abre o prompt do próprio updater.
     fn check_updates(&mut self, ctx: &egui::Context) {
         self.updater.check_now(ctx);
     }
@@ -259,7 +292,7 @@ impl UtilsApp {
                         eprintln!("config: {e}");
                     }
                 }
-                Err(e) => self.status = format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::AutostartFailed)),
+                Err(e) => self.set_status(format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::AutostartFailed))),
             }
         }
         if opts.save {
@@ -269,31 +302,35 @@ impl UtilsApp {
             match config::save(APP_ID, &self.cfg) {
                 // Atalho e exclusões são lidos na subida (registro do atalho e
                 // monitor do clipboard): avisa em vez de fingir que já valeu.
-                Ok(()) => self.status = i18n::t(self.cfg.lang, Key::RestartApplies).to_string(),
-                Err(e) => self.status = format!("⚠ {e}"),
+                Ok(()) => self.set_status(i18n::t(self.cfg.lang, Key::RestartApplies).to_string()),
+                Err(e) => self.set_status(format!("⚠ {e}")),
             }
         }
         if opts.export {
             if let Some(path) = transfer::pick_export(&transfer::export_name()) {
-                self.status = match transfer::export_to(&path, &self.history) {
+                self.set_status(match transfer::export_to(&path, &self.history) {
                     Ok(()) => i18n::t(self.cfg.lang, Key::Exported).to_string(),
                     Err(e) => format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::ExportFailed)),
-                };
+                });
             }
         }
         if opts.import {
             if let Some(path) = transfer::pick_open() {
-                self.status = match transfer::import_into(&path, &mut self.history) {
+                // Mensagem primeiro, efeitos depois: `set_status` e os
+                // efeitos do Ok não podem disputar o borrow do `import_into`.
+                let lang = self.cfg.lang;
+                let outcome = transfer::import_into(&path, &mut self.history);
+                match outcome {
                     Ok(()) => {
                         self.save_history();
                         // O import pode mexer na lista sem mudar o tamanho: o
                         // cache da lista filtrada precisa ser descartado.
                         self.clip_ui.invalidate();
                         ctx.request_repaint();
-                        i18n::t(self.cfg.lang, Key::Imported).to_string()
+                        self.set_status(i18n::t(lang, Key::Imported).to_string());
                     }
-                    Err(e) => format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::ImportFailed)),
-                };
+                    Err(e) => self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::ImportFailed))),
+                }
             }
         }
     }
@@ -339,38 +376,44 @@ impl eframe::App for UtilsApp {
         self.updater.tick(ctx);
         match self.updater.status().clone() {
             craft_update::updater::Status::UpToDate => {
-                self.status = i18n::t(self.cfg.lang, Key::UpToDate).to_string();
+                self.set_status(i18n::t(self.cfg.lang, Key::UpToDate).to_string());
                 self.updater.dismiss_status();
             }
             craft_update::updater::Status::Failed(e) => {
-                self.status = format!("⚠ {e}");
+                self.set_status(format!("⚠ {e}"));
                 self.updater.dismiss_status();
             }
             _ => {}
         }
+        // Status de ação é transitório: some ~4s depois de entrar (o "Desafixado"
+        // ficava preso no rodapé até a próxima mensagem).
+        self.expire_status(ctx);
 
-        egui::containers::Panel::top("topo").show(ui, |ui| {
+        // Barra de topo: a titlebar do SO já mostra "Local Utils" — aqui ficam
+        // só as ações da direita (⚙ opções, ↻ updates e os combos de
+        // idioma/tema), numa faixa mais baixa que o padrão do painel.
+        let topo_frame = egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::symmetric(10, 3));
+        egui::containers::Panel::top("topo").frame(topo_frame).show(ui, |ui| {
+            // Direita→esquerda: a PRIMEIRA coisa adicionada encosta na borda
+            // direita. Engrenagem e ↻ são ícones ghost (mesmo tamanho do kit);
+            // os combos de configuração vêm depois, à esquerda deles.
             ui.horizontal(|ui| {
-                ui.strong(i18n::t(self.cfg.lang, Key::AppTitle));
-                // Direita→esquerda: configurações e o check de update (o
-                // mesmo par da toolbar dos irmãos da suíte).
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Engrenagem: opções do app (autostart, atalho, exclusões,
+                    // export/import).
+                    if kit::ghost(ui, "⚙").on_hover_text(i18n::t(self.cfg.lang, Key::Options)).clicked() {
+                        self.open_options();
+                    }
+                    // ↻ ghost: o check de update é ação secundária e o texto longo
+                    // ("Verificar atualizações") pesava na faixa — o tooltip diz o
+                    // que o ícone faz.
+                    if kit::ghost(ui, "↻").on_hover_text(i18n::t(self.cfg.lang, Key::CheckUpdates)).clicked() {
+                        self.check_updates(ctx);
+                    }
                     let (cfg_changed, _) = utils_ui::settings_ui(ui, &mut self.cfg, false);
                     if cfg_changed {
                         theme::apply(ctx, self.cfg.theme);
                         let _ = config::save(APP_ID, &self.cfg);
-                    }
-                    // Ghost button: o check de update é ação secundária, não
-                    // pede o peso visual de um botão com moldura.
-                    let check = egui::Button::new(egui::RichText::new(i18n::t(self.cfg.lang, Key::CheckUpdates)).weak()).frame(false);
-                    if ui.add(check).clicked() {
-                        self.check_updates(ctx);
-                    }
-                    // Engrenagem: opções do app (autostart, atalho, exclusões,
-                    // export/import).
-                    let gear = egui::Button::new(egui::RichText::new("⚙").weak()).frame(false);
-                    if ui.add(gear).on_hover_text(i18n::t(self.cfg.lang, Key::Options)).clicked() {
-                        self.open_options();
                     }
                 });
             });
@@ -381,11 +424,10 @@ impl eframe::App for UtilsApp {
                 if !self.status.is_empty() {
                     ui.label(egui::RichText::new(&self.status).small().weak());
                 }
-                // Contagem do histórico no rodapé. O texto vem do catálogo com
-                // `{n}` preenchido à mão — plural real entra quando existir a
-                // chave plural no catálogo.
-                // Singular/plural na mão (sem plumbing de plural do i18n
-                // ainda): 1 item, 2 itens.
+                // Contagem do histórico no rodapé. Singular/plural na mão (o
+                // catálogo não tem forma plural ainda): 1 item, 2 itens — as
+                // linhas `ItemOne`/`ItemsCount` do TSV são cobertas por teste
+                // em `utils-ui` (o QA já viu "4 items" em inglês).
                 let key = if self.history.len() == 1 { Key::ItemOne } else { Key::ItemsCount };
                 let count = i18n::t(self.cfg.lang, key).replace("{n}", &self.history.len().to_string());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -423,7 +465,7 @@ impl eframe::App for UtilsApp {
             self.save_history();
         }
         if let Some(status) = outcome.status {
-            self.status = status;
+            self.set_status(status);
             // O rodapé já foi desenhado neste frame: sem o pedido de repaint o
             // "copiado ✓" só apareceria no próximo evento do usuário.
             ctx.request_repaint();

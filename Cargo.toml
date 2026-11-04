@@ -37,7 +37,9 @@ winresource = "0.1"
 
 [dependencies]
 eframe = "0.37"
-egui = "0.37"
+# `monochrome_emoji_fonts`: embute Noto Emoji + emoji-icon — sem ela os glifos
+# de UI (★ 🗑 ✏ 📋) viram tofu: as fontes default (Hack/Ubuntu) não os têm.
+egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
 image = "0.25"
 utils-ui = { path = "utils-ui" }
 serde = { version = "1", features = ["derive"] }
@@ -61,7 +63,7 @@ rfd = { version = "0.17", default-features = false }
 # Bandeja: MESMA crate/versão do local-keys (tray-icon 0.24). Só no Windows —
 # no Linux o tray-icon puxaria muda→gtk3 pra dentro do AppImage.
 tray-icon = "0.24"
-# Atalho global (Win+Shift+V): registra no SO e entrega WM_HOTKEY numa thread
+# Atalho global (Win+Alt+V): registra no SO e entrega WM_HOTKEY numa thread
 # própria. 0.8 = última estável; usa windows-sys 0.59, que já estava no grafo.
 global-hotkey = "0.8"
 # Autostart: HKCU\Software\Microsoft\Windows\CurrentVersion\Run — mesma crate
@@ -78,6 +80,8 @@ winreg = "0.55"
 # WNDCLASSW só existe com essa feature) e SystemInformation (GetLocalTime dos
 # carimbos relativos da lista). WindowsAndMessaging cobre também o winctl
 # (ShowWindow/EnumWindows/GetMessageW da bandeja e do atalho global).
+# Input_KeyboardAndMouse: GetAsyncKeyState (a captura do atalho nas opções
+# pergunta ao SO se o Win está pressionado — o egui não expõe o Super).
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -85,6 +89,7 @@ windows = { version = "0.62", features = [
     "Win32_System_LibraryLoader",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

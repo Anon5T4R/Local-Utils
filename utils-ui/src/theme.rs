@@ -40,6 +40,17 @@ impl Appearance {
         }
     }
 
+    /// Nome no seletor JÁ traduzido (o da UI): o `label()` acima é o código em
+    /// inglês, que serve pra log e comparação — a tela usa este.
+    pub fn label_i18n(self, lang: crate::i18n::Lang) -> &'static str {
+        let key = match self {
+            Appearance::System => crate::i18n::Key::AppearanceSystem,
+            Appearance::Light => crate::i18n::Key::AppearanceLight,
+            Appearance::Dark => crate::i18n::Key::AppearanceDark,
+        };
+        crate::i18n::t(lang, key)
+    }
+
     /// A preferência do egui: `System` continua automático (não resolve pra fixo).
     pub fn preference(self) -> egui::ThemePreference {
         match self {

@@ -4,7 +4,7 @@
 //! O registro roda numa thread própria porque a crate `global-hotkey` cria uma
 //! janela Win32 na thread que chama o gerenciador e precisa que ESSA thread
 //! bombeie mensagens (`winctl::run_message_loop`) — só assim o `WM_HOTKEY`
-//! chega. O texto do atalho vem do config (`win+shift+v` por padrão); texto
+//! chega. O texto do atalho vem do config (`win+alt+v` por padrão); texto
 //! inválido não derruba nada: cai no padrão e o app avisa no rodapé.
 //!
 //! Fora do Windows não há atalho global (decisão da suíte): `spawn` devolve
@@ -33,6 +33,23 @@ pub enum HotkeyEvent {
 /// ou falha ao criar a thread).
 pub fn spawn(spec: String) -> Option<Receiver<HotkeyEvent>> {
     imp::spawn(spec)
+}
+
+/// O Win/Super está pressionado AGORA? O egui não carrega essa tecla nas
+/// `Modifiers` fora do macOS (`mac_cmd` só vale lá; no Windows o Super some),
+/// e a captura do atalho nas opções precisa dela pra montar `win+alt+v`.
+#[cfg(windows)]
+pub fn win_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LWIN, VK_RWIN};
+    // SAFETY: GetAsyncKeyState só LÊ o estado do teclado; sem pré-condição.
+    // O bit alto (valor negativo) = tecla pressionada neste instante.
+    unsafe { GetAsyncKeyState(i32::from(VK_LWIN.0)) < 0 || GetAsyncKeyState(i32::from(VK_RWIN.0)) < 0 }
+}
+
+/// Fora do Windows não há atalho global: nunca há "win" pra capturar.
+#[cfg(not(windows))]
+pub fn win_down() -> bool {
+    false
 }
 
 #[cfg(windows)]
@@ -115,7 +132,7 @@ mod imp {
         winctl::run_message_loop();
     }
 
-    /// `"win+shift+v"` → combinação da crate. Mods: `ctrl`/`alt`/`shift`/`win`
+    /// `"win+alt+v"` → combinação da crate. Mods: `ctrl`/`alt`/`shift`/`win`
     /// (aceita `control`, `super` e `meta` como apelidos), e a ÚLTIMA parte é a
     /// tecla: letra, dígito ou F1–F12. Qualquer outra coisa = `None`.
     fn parse(spec: &str) -> Option<(Modifiers, Code)> {
@@ -208,7 +225,7 @@ mod imp {
         #[test]
         fn parse_aceita_o_padrao_e_as_formas_usuais() {
             let padrao = parse(DEFAULT_HOTKEY);
-            assert_eq!(padrao, Some((Modifiers::SHIFT | Modifiers::SUPER, Code::KeyV)));
+            assert_eq!(padrao, Some((Modifiers::ALT | Modifiers::SUPER, Code::KeyV)));
 
             // Caixa alta, espaço e ordem dos mods não importam.
             assert_eq!(parse(" Ctrl + Alt + F9 "), Some((Modifiers::CONTROL | Modifiers::ALT, Code::F9)));

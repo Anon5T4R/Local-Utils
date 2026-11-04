@@ -62,3 +62,14 @@
 	Close	Fechar
 	Open Local Utils	Abrir Local Utils
 	Quit	Sair
+	System theme	Sistema
+	Light	Claro
+	Dark	Escuro
+	Pin	Fixar
+	Unpin	Desafixar
+	Clear	Limpar
+	Clear all	Limpar tudo
+	Pinned items are kept	Os itens fixados são mantidos
+	history cleared	histórico limpo
+	Register shortcut	Registrar atalho
+	Press the new shortcut… (Esc cancels)	Pressione o novo atalho… (Esc cancela)

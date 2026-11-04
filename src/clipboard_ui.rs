@@ -94,6 +94,8 @@ pub struct ClipboardUiState {
     edit: Option<EditDraft>,
     /// Texto do diálogo de QR (`None` = fechado).
     qr: Option<String>,
+    /// Confirmação do "Limpar" (só o histórico não-pinado sai).
+    confirm_clear: bool,
     /// Offset da lista e altura visível do frame anterior. As setas precisam
     /// saber onde a linha focada está pra trazê-la pra tela — o `show_rows` só
     /// desenha as linhas visíveis.
@@ -123,6 +125,7 @@ impl Default for ClipboardUiState {
             thumbs: ThumbCache::default(),
             edit: None,
             qr: None,
+            confirm_clear: false,
             scroll_offset: 0.0,
             view_height: 0.0,
             scroll_to: None,
@@ -170,13 +173,22 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     });
     ui.add_space(4.0);
 
-    // ── filtro por tipo (pills) ───────────────────────────────────────
-    ui.horizontal_wrapped(|ui| {
+    // ── filtro por tipo (pills) + "Limpar" ────────────────────────────
+    ui.horizontal(|ui| {
         for filter in KindFilter::ALL {
             if kit::pill(ui, i18n::t(lang, filter.label_key()), state.filter == filter).clicked() {
                 state.filter = filter;
             }
         }
+        // Ação destrutiva: ghost com a tinta `danger` do tema, encostado à
+        // direita da MESMA linha dos filtros. O modal confirma antes de mexer.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let skin = Skin::of(ui);
+            let clear = kit::ghost_ink(ui, i18n::t(lang, Key::ClearHistory), skin.danger).on_hover_text(i18n::t(lang, Key::ClearExplain));
+            if clear.clicked() {
+                state.confirm_clear = true;
+            }
+        });
     });
     ui.add_space(6.0);
 
@@ -186,7 +198,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     let ids = state.cache.ids.clone();
 
     let mut actions = Actions::default();
-    let modal_open = state.edit.is_some() || state.qr.is_some();
+    let modal_open = state.edit.is_some() || state.qr.is_some() || state.confirm_clear;
 
     // ── teclado ───────────────────────────────────────────────────────
     // Esc limpa a busca mesmo com o campo focado (no piloto Esc fechava a
@@ -292,6 +304,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     // ── diálogos (por cima da lista) ──────────────────────────────────
     edit_modal(&ctx, lang, state, history, &mut out);
     qr_modal(&ctx, lang, state);
+    clear_modal(&ctx, lang, state, history, &mut out);
 
     // Mutação (pin/remover/editar) pode mudar o que casa com a busca/filtro
     // sem mexer no tamanho da lista: força o recálculo no próximo frame.
@@ -384,11 +397,15 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
         ui.add(egui::Label::new(egui::RichText::new(preview_text(entry)).color(skin.text)).truncate());
     });
 
-    // Direita: ★ sempre visível; o resto só no hover/foco.
+    // Direita: ★ sempre visível (fixado ou não — o pin é a ação que mais se
+    // usa); o resto só no hover/foco.
     row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         let star = if entry.pinned { "★" } else { "☆" };
-        let ink = if entry.pinned { skin.accent } else { skin.muted };
-        if kit::ghost_ink(ui, star, ink).clicked() {
+        // Preenchida + accent quando fixada; contorno em tinta forte (bem mais
+        // legível que o `muted` de antes) quando não.
+        let ink = if entry.pinned { skin.accent } else { skin.text.gamma_multiply(0.75) };
+        let tip = if entry.pinned { Key::Unpin } else { Key::Pin };
+        if kit::ghost_ink(ui, star, ink).on_hover_text(i18n::t(lang, tip)).clicked() {
             actions.pin = Some(entry.id);
         }
         if !(resp.hovered() || focused) {
@@ -720,6 +737,44 @@ fn qr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState) {
     });
     if !(cancel || resp.should_close()) {
         state.qr = Some(text);
+    }
+}
+
+/// Confirmação do "Limpar": só o histórico NÃO fixado sai; as entradas fixadas
+/// ficam (o modal diz isso antes de o usuário confirmar).
+fn clear_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
+    if !state.confirm_clear {
+        return;
+    }
+    let mut confirm = false;
+    let mut cancel = false;
+    let resp = egui::Modal::new(egui::Id::unique("clip-clear")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
+        kit::begin_dialog(ui);
+        ui.set_width(360.0);
+        ui.heading(i18n::t(lang, Key::ClearAll));
+        ui.add_space(10.0);
+        ui.label(i18n::t(lang, Key::ClearExplain));
+        ui.add_space(14.0);
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if kit::pill_danger(ui, i18n::t(lang, Key::ClearAll)).clicked() {
+                    confirm = true;
+                }
+                if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                    cancel = true;
+                }
+            });
+        });
+    });
+    if confirm {
+        history.clear_unpinned();
+        out.changed = true;
+        // O foco pode ter ficado numa entrada que acabou de sair da lista.
+        state.focus = None;
+        out.status = Some(i18n::t(lang, Key::HistoryCleared).to_string());
+        state.confirm_clear = false;
+    } else if cancel || resp.should_close() {
+        state.confirm_clear = false;
     }
 }
 
