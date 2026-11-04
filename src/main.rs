@@ -20,6 +20,7 @@ mod paste;
 mod picker;
 mod popup;
 mod shot_editor;
+mod system;
 mod tools;
 mod tools_calc;
 mod tools_clock;

@@ -262,6 +262,30 @@ pub enum Key {
     ConvertWaiting,
     ClearDone,
     JxlInputOnly,
+    // aba Sistema: monitor de recursos (CPU, memória, discos, rede, bateria,
+    // uptime, temperaturas e top processos)
+    SysCpu,
+    SysPerCore,
+    SysMemory,
+    SysSwap,
+    SysDisks,
+    SysNetwork,
+    SysBattery,
+    SysUptime,
+    SysProcesses,
+    SysTemperatures,
+    SysUnknown,
+    SysUnavailable,
+    SysCharging,
+    SysPlugged,
+    SysOnBattery,
+    SysNoBattery,
+    SysKill,
+    SysKillConfirm,
+    SysKilled,
+    SysKillFailed,
+    SysAvg,
+    SysMax,
 }
 
 /// Todas as chaves — usado pelo teste de completude (fora de teste o match
@@ -457,6 +481,28 @@ const KEYS: &[Key] = &[
     Key::ConvertWaiting,
     Key::ClearDone,
     Key::JxlInputOnly,
+    Key::SysCpu,
+    Key::SysPerCore,
+    Key::SysMemory,
+    Key::SysSwap,
+    Key::SysDisks,
+    Key::SysNetwork,
+    Key::SysBattery,
+    Key::SysUptime,
+    Key::SysProcesses,
+    Key::SysTemperatures,
+    Key::SysUnknown,
+    Key::SysUnavailable,
+    Key::SysCharging,
+    Key::SysPlugged,
+    Key::SysOnBattery,
+    Key::SysNoBattery,
+    Key::SysKill,
+    Key::SysKillConfirm,
+    Key::SysKilled,
+    Key::SysKillFailed,
+    Key::SysAvg,
+    Key::SysMax,
 ];
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -667,6 +713,31 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::ConvertWaiting => "waiting",
         Key::ClearDone => "Clear finished",
         Key::JxlInputOnly => "JXL is input only (no JXL encoder yet)",
+        // Aba Sistema. "CPU", "Swap" e "PID" são símbolos/técnicos: ficam
+        // iguais nos três idiomas (a chave existe pra manter o catálogo único).
+        Key::SysCpu => "CPU",
+        Key::SysPerCore => "per core",
+        Key::SysMemory => "Memory",
+        Key::SysSwap => "Swap",
+        Key::SysDisks => "Disks",
+        Key::SysNetwork => "Network",
+        Key::SysBattery => "Battery",
+        Key::SysUptime => "Uptime",
+        Key::SysProcesses => "Top processes",
+        Key::SysTemperatures => "Temperatures",
+        Key::SysUnknown => "unknown",
+        Key::SysUnavailable => "unavailable",
+        Key::SysCharging => "charging",
+        Key::SysPlugged => "plugged in",
+        Key::SysOnBattery => "on battery",
+        Key::SysNoBattery => "no battery",
+        Key::SysKill => "End process",
+        // `{name}` e `{pid}` são preenchidos pelo chamador (modal de confirmação).
+        Key::SysKillConfirm => "End {name} (PID {pid})?",
+        Key::SysKilled => "process ended",
+        Key::SysKillFailed => "could not end the process",
+        Key::SysAvg => "avg",
+        Key::SysMax => "max",
     };
     let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
     I18N.t(craft_lang, source)
@@ -833,5 +904,30 @@ mod tests {
         // Símbolos não traduzem.
         assert_eq!(t(Lang::Pt, Key::LabelHex), "Hex");
         assert_eq!(t(Lang::Pt, Key::LabelRgb), "RGB");
+    }
+
+    /// As chaves do v0.6 (aba Sistema) têm linha nos TSVs: sem elas o monitor
+    /// cairia no inglês sem aviso.
+    #[test]
+    fn chaves_do_sistema_saem_do_catalogo() {
+        assert_eq!(t(Lang::Pt, Key::TabSystem), "Sistema");
+        assert_eq!(t(Lang::Pt, Key::SysMemory), "Memória");
+        assert_eq!(t(Lang::Pt, Key::SysDisks), "Discos");
+        assert_eq!(t(Lang::Pt, Key::SysNetwork), "Rede");
+        assert_eq!(t(Lang::Pt, Key::SysUptime), "Tempo ligado");
+        assert_eq!(t(Lang::Pt, Key::SysUnavailable), "indisponível");
+        assert_eq!(t(Lang::Pt, Key::SysNoBattery), "sem bateria");
+        assert_eq!(t(Lang::Pt, Key::SysCharging), "carregando");
+        assert_eq!(t(Lang::Pt, Key::SysKill), "Finalizar processo");
+        assert_eq!(t(Lang::Pt, Key::SysKillConfirm).replace("{name}", "notepad.exe").replace("{pid}", "42"), "Finalizar notepad.exe (PID 42)?");
+        assert_eq!(t(Lang::Pt, Key::SysKilled), "processo finalizado");
+        assert_eq!(t(Lang::Pt, Key::SysAvg), "média");
+        assert_eq!(t(Lang::Es, Key::SysNetwork), "Red");
+        assert_eq!(t(Lang::Es, Key::SysUnavailable), "no disponible");
+        assert_eq!(t(Lang::Es, Key::SysOnBattery), "con batería");
+        assert_eq!(t(Lang::Es, Key::SysKillFailed), "no se pudo finalizar el proceso");
+        // Símbolos não traduzem.
+        assert_eq!(t(Lang::Es, Key::SysCpu), "CPU");
+        assert_eq!(t(Lang::Es, Key::SysSwap), "Swap");
     }
 }

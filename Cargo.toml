@@ -70,6 +70,15 @@ ab_glyph = "0.2"
 # implementa `image::ImageDecoder`. O `bytemuck` que ela pede já está no grafo
 # pelo próprio `image`, e o `image` 0.25 dela casa com o nosso (0.25.x).
 jxl-oxide = { version = "0.12", features = ["image"] }
+# Monitor da aba Sistema (`system.rs`): CPU, memória, discos, rede, uptime,
+# processos e componentes de temperatura. MIT, 100% local (nada de rede). 0.40
+# é a estável atual e — decisivo — depende de `windows >=0.62,<0.63`: usa a
+# MESMA instância da crate `windows` que este app já tem (0.62), sem duplicar
+# o grafo (duas instâncias quebrariam o dx12 do wgpu-hal). A 0.33 ainda pedia
+# `windows 0.54..=0.57`, o que traria uma segunda instância.
+# `default-features = false`: sobram só as quatro leituras que a aba usa —
+# "user" (conta do SO) e "multithread" (puxaria rayon) ficam fora do grafo.
+sysinfo = { version = "0.40", default-features = false, features = ["system", "disk", "network", "component"] }
 
 [target.'cfg(windows)'.dependencies]
 # Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e
@@ -110,11 +119,14 @@ winreg = "0.55"
 # (SoftwareBitmap do motor) e Storage_Streams (DataWriter monta o IBuffer do
 # RGBA). WinRT (RoInitialize) porque o motor exige apartamento COM na thread
 # que chama — a leitura roda numa thread própria.
+# System_Power: GetSystemPowerStatus (bateria da aba Sistema) — um P/Invoke,
+# sem crate nova.
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
+    "Win32_System_Power",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_WinRT",

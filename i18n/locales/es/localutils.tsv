@@ -183,3 +183,25 @@
 	waiting	en espera
 	Clear finished	Limpiar terminados
 	JXL is input only (no JXL encoder yet)	JXL solo como origen (todavía no hay codificador JXL)
+	CPU	CPU
+	per core	por núcleo
+	Memory	Memoria
+	Swap	Swap
+	Disks	Discos
+	Network	Red
+	Battery	Batería
+	Uptime	Tiempo encendido
+	Top processes	Principales procesos
+	Temperatures	Temperaturas
+	unknown	desconocido
+	unavailable	no disponible
+	charging	cargando
+	plugged in	enchufado
+	on battery	con batería
+	no battery	sin batería
+	End process	Finalizar proceso
+	End {name} (PID {pid})?	¿Finalizar {name} (PID {pid})?
+	process ended	proceso finalizado
+	could not end the process	no se pudo finalizar el proceso
+	avg	media
+	max	máx

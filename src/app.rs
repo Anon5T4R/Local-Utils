@@ -3,8 +3,8 @@
 //! SO), fileira de abas do roadmap e rodapé de status. A aba Clipboard (a
 //! âncora do app) desenha o histórico em `clipboard_ui.rs`; a aba Screenshot
 //! edita a captura pendente (`shot_editor.rs`); Ferramentas traz as sub-abas
-//! (`tools.rs`) e Notas é o scratchpad (`tools_notes.rs`). Só a aba Sistema
-//! ainda é esqueleto.
+//! (`tools.rs`), Notas é o scratchpad (`tools_notes.rs`) e Sistema é o monitor
+//! de recursos (`system.rs`).
 
 use std::sync::mpsc::Receiver;
 
@@ -25,6 +25,7 @@ use crate::options::{self, OptionsState};
 use crate::picker::{self, PickerState};
 use crate::popup::{self, Popup};
 use crate::shot_editor::{self, Shot};
+use crate::system::{self, SystemState};
 use crate::tools::{self, ToolsState};
 use crate::tools_notes::{self, NotesState};
 use crate::transfer;
@@ -125,6 +126,10 @@ pub struct UtilsApp {
     /// Aba Ferramentas (relógio, calculadora, unidades e dev) — o estado dos
     /// quatro painéis sobrevive à troca de aba/sub-aba.
     tools: ToolsState,
+    /// Aba Sistema: monitor de recursos. O `sysinfo` só existe enquanto a aba
+    /// está VISÍVEL (o `tick` cria e larga); o acumulado de temperatura da
+    /// sessão fica aqui.
+    system: SystemState,
     /// Aba Notas: só o marcador do autosave (o texto mora no config).
     notes: NotesState,
     /// Aba Cor: seletor (hex/RGB/HSL), conta-gotas e recentes.
@@ -205,6 +210,7 @@ impl UtilsApp {
             popup_paste: None,
             ocr: Ocr::default(),
             tools: ToolsState::default(),
+            system: SystemState::default(),
             notes: NotesState::default(),
             picker,
             convert: ConvertState::default(),
@@ -555,6 +561,10 @@ impl eframe::App for UtilsApp {
         if self.tools.wants_repaint(&self.cfg.alarms) {
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
         }
+        // Monitor da aba Sistema: só roda com a aba VISÍVEL (o `tick` larga o
+        // `sysinfo` ao fechar) e o repaint de 1s também só existe visível —
+        // fechada, nada aqui acorda a UI.
+        self.system.tick(ctx, self.tab == Tab::Sistema);
         // Autosave da aba Notas: o prazo do debounce corre fora da aba também
         // (trocar de aba no meio da digitação não pode deixar o texto só na
         // memória).
@@ -643,6 +653,7 @@ impl eframe::App for UtilsApp {
         let mut picker_cfg = false;
         let mut picker_history = false;
         let mut convert_status: Option<String> = None;
+        let mut system_status: Option<String> = None;
         egui::CentralPanel::default().show(ui, |ui| {
             // Fileira de abas: `selectable_value` marca a ativa e troca o
             // painel na hora (sem estado extra). O rótulo de Ferramentas ganha
@@ -694,11 +705,10 @@ impl eframe::App for UtilsApp {
                     let conv = convert::show(ui, self.cfg.lang, &mut self.convert);
                     convert_status = conv.status;
                 }
-                // Aba Sistema ainda é esqueleto: aviso traduzido no centro.
-                _ => {
-                    let _ = ui.centered_and_justified(|ui| {
-                        ui.label(egui::RichText::new(i18n::t(self.cfg.lang, Key::TabWip)).weak());
-                    });
+                // Sistema: monitor de CPU/memória/discos/rede/bateria/processos.
+                Tab::Sistema => {
+                    let sys = system::show(ui, self.cfg.lang, &mut self.system);
+                    system_status = sys.status;
                 }
             }
         });
@@ -747,6 +757,11 @@ impl eframe::App for UtilsApp {
         // Converter: o único status possível é falha ao subir a thread (as
         // linhas mostram o resto por conta própria).
         if let Some(status) = convert_status.filter(|s| !s.is_empty()) {
+            self.set_status(status);
+            ctx.request_repaint();
+        }
+        // Sistema: processo finalizado (ou sem permissão pra finalizar).
+        if let Some(status) = system_status.filter(|s| !s.is_empty()) {
             self.set_status(status);
             ctx.request_repaint();
         }
