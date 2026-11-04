@@ -35,6 +35,9 @@ const OVERLAY_TITLE: &str = "Local Utils — captura";
 /// Menor seleção válida, em px da imagem: clique acidental não vira captura
 /// vazia.
 const MIN_SIDE: u32 = 8;
+/// Margem extra do overlay além da borda da tela (points): cobre o
+/// arredondamento e garante que os cantos são clicáveis (ver `Frozen`).
+const OVERSCAN: f32 = 3.0;
 
 /// Id do viewport. Fixo: a mesma captura reusa a mesma janela.
 fn viewport_id() -> egui::ViewportId {
@@ -107,8 +110,13 @@ impl Capture {
             return Err("estado da captura indisponível".into());
         };
         st.frame = Some(Frozen {
-            pos_pt: egui::pos2(origin.0 as f32 / ppp, origin.1 as f32 / ppp),
-            size_pt: egui::vec2(image.width() as f32 / ppp, image.height() as f32 / ppp),
+            // Overscan de 3 points por lado: arredondamento da posição/tamanho
+            // deixava os EXTREMOS da tela fora do overlay, e o clique no canto
+            // atravessava pra janela de trás (arrastar "movia a captura" —
+            // feedback do João). Cobrir além da borda garante que nenhum
+            // clique escape; o recorte mapeia por razão e nem sente.
+            pos_pt: egui::pos2(origin.0 as f32 / ppp - OVERSCAN, origin.1 as f32 / ppp - OVERSCAN),
+            size_pt: egui::vec2(image.width() as f32 / ppp + OVERSCAN * 2.0, image.height() as f32 / ppp + OVERSCAN * 2.0),
             image,
         });
         st.tex = None;
