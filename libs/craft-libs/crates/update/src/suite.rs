@@ -29,6 +29,10 @@ pub const LOCALSLIDES: App = App {
     publisher: "Local Slides contributors",
     ..App::new("localslides", "Local Slides", "Slide decks and presentations", "Anon5T4R/local-slides")
 };
+pub const LOCALSHEETS: App = App {
+    publisher: "Anon5T4R",
+    ..App::new("localsheets", "Local Sheets", "Spreadsheets and data", "Anon5T4R/local-sheets")
+};
 pub const CADCRAFT: App = App::new("cadcraft", "CADCraft", "Computer-aided design and drafting", "storytold/cadcraft");
 pub const GRIDCRAFT: App = App::new("gridcraft", "GridCraft", "Spreadsheets and data", "storytold/gridcraft");
 
@@ -38,7 +42,7 @@ pub const GRIDCRAFT: App = App::new("gridcraft", "GridCraft", "Spreadsheets and 
 pub const LAUNCHER: App = App::new("artcraft-launcher", "ArtCraft Launcher", "Installs and updates the Craft App Suite", "storytold/craft-launcher");
 
 /// The Craft App Suite, in getartcraft.com's display order.
-pub const SUITE: [App; 16] = [
+pub const SUITE: [App; 17] = [
     PHOTOCRAFT,
     VECTORCRAFT,
     FILMCRAFT,
@@ -53,6 +57,7 @@ pub const SUITE: [App; 16] = [
     SOUNDCRAFT,
     DECKCRAFT,
     LOCALSLIDES,
+    LOCALSHEETS,
     CADCRAFT,
     GRIDCRAFT,
 ];
@@ -67,7 +72,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sixteen_apps_with_unique_ids_in_their_own_repos() {
+    fn seventeen_apps_with_unique_ids_in_their_own_repos() {
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -81,5 +86,6 @@ mod tests {
         assert!(by_id(LAUNCHER.id).is_none());
         assert_eq!(by_id("pdfcraft").map(|a| a.former_ids), Some(&["printcraft"][..]));
         assert_eq!(by_id("localslides").map(|a| (a.name, a.publisher)), Some(("Local Slides", "Local Slides contributors")));
+        assert_eq!(by_id("localsheets").map(|a| (a.name, a.publisher, a.repo)), Some(("Local Sheets", "Anon5T4R", "Anon5T4R/local-sheets")));
     }
 }
