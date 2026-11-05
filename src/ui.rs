@@ -328,11 +328,20 @@ pub fn card_h<R>(ui: &mut egui::Ui, width: f32, min_height: f32, add: impl FnOnc
         .corner_radius(egui::CornerRadius::same(CARD_RADIUS))
         .inner_margin(egui::Margin::same(CARD_PAD))
         .show(ui, |ui| {
-            ui.set_width(inner_w);
-            if inner_h > 0.0 {
-                ui.set_min_height(inner_h);
-            }
-            add(ui)
+            // O ui de um Frame HERDA o layout do pai (egui `new_child`:
+            // `layout.unwrap_or(*self.layout())`): criado dentro de um
+            // `horizontal_top` (as grades 2×N de cards), o corpo do card
+            // fluía na HORIZONTAL — conteúdo emfileirado, chips numa linha
+            // só transbordando e o card vizinho empurrado pra fora. Todo
+            // card é coluna, aqui e sempre.
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.set_width(inner_w);
+                if inner_h > 0.0 {
+                    ui.set_min_height(inner_h);
+                }
+                add(ui)
+            })
+            .inner
         })
         .inner
 }
