@@ -51,11 +51,18 @@ const GUTTER: f32 = 12.0;
 /// cards empilham: a janela sem maximizar mostra menos card por linha, mas
 /// nenhum corta.
 const TWO_COL_MIN_W: f32 = 900.0;
-/// Alturas do desenho (px).
-const SPARK_H: f32 = 36.0;
-/// Chip de um núcleo (o par "C0 12%" com a barrinha interna).
+// Alturas do desenho (px).
+/// Sparkline do card do CPU (o gráfico principal do painel).
+const SPARK_H: f32 = 56.0;
+/// Sparkline da rede: o card dela é mais baixo e o gráfico é de apoio.
+const SPARK_H_NET: f32 = 36.0;
+/// Largura-base do chip de um núcleo (o par "C0 12%" com a barrinha interna):
+/// a grade tira a capacidade daqui e depois ESTICA cada chip para preencher a
+/// linha do card.
 const CHIP_W: f32 = 78.0;
 const CHIP_H: f32 = 42.0;
+/// Vão entre os chips da grade de núcleos (horizontal e vertical).
+const CHIP_GAP: f32 = 6.0;
 /// Altura de uma linha da lista de processos.
 const PROC_H: f32 = 40.0;
 /// Faixa aceita de temperatura (°C). Fora dela o valor é lixo de sensor (o WMI
@@ -454,7 +461,28 @@ fn meter_row(ui: &mut egui::Ui, label: &str, value: &str, frac: f32, color: egui
 /// Quantos chips de núcleo cabem numa linha do card (o espaçamento entre eles
 /// é o `item_spacing.x` do kit, 6px).
 fn chip_capacity(inner_w: f32) -> usize {
-    (((inner_w + 6.0) / (CHIP_W + 6.0)).floor() as usize).max(1)
+    (((inner_w + CHIP_GAP) / (CHIP_W + CHIP_GAP)).floor() as usize).max(1)
+}
+
+/// Grade dos núcleos: quantas colunas cabem, em quantas linhas e a largura de
+/// cada chip. A largura é calculada para a linha PREENCHER o card de ponta a
+/// ponta (em vez de sobrar um vão morto à direita).
+#[derive(Clone, Copy)]
+struct CoreGrid {
+    cols: usize,
+    rows: usize,
+    chip_w: f32,
+}
+
+/// Geometria da grade a partir da largura útil do card e da contagem de
+/// núcleos. A MESMA conta dimensiona o card ([`cpu_card_h`]) e desenha os
+/// chips ([`core_chips`]): os dois nunca discordam.
+fn core_grid(inner_w: f32, cores: usize) -> CoreGrid {
+    let cols = chip_capacity(inner_w).min(cores.max(1));
+    let cols_f = cols as f32;
+    let chip_w = ((inner_w - (cols_f - 1.0) * CHIP_GAP) / cols_f).max(1.0);
+    let rows = cores.div_ceil(cols).max(1);
+    CoreGrid { cols, rows, chip_w }
 }
 
 /// Duas células da grade lado a lado ou empilhadas, conforme a largura. Nas
@@ -474,16 +502,20 @@ fn card_pair(ui: &mut egui::Ui, two_cols: bool, card_w: f32, min_h: f32, left: i
     }
 }
 
-/// Núcleos como chips com wrap: nunca corta na borda do card.
-fn core_chips(ui: &mut egui::Ui, usages: &[f32]) {
+/// Núcleos como chips numa grade que preenche o card: as linhas são explícitas
+/// (`chunks`), não um wrap implícito — nenhum chip escapa da borda e a altura
+/// do card é exatamente a desta grade.
+fn core_chips(ui: &mut egui::Ui, usages: &[f32], grid: CoreGrid) {
     let skin = Skin::of(ui);
-    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-    ui.horizontal_wrapped(|ui| {
-        for (index, usage) in usages.iter().enumerate() {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(CHIP_W, CHIP_H), egui::Sense::hover());
-            paint_core_chip(ui, rect, index, *usage, skin);
-        }
-    });
+    ui.spacing_mut().item_spacing = egui::vec2(CHIP_GAP, CHIP_GAP);
+    for (row, chunk) in usages.chunks(grid.cols).enumerate() {
+        ui.horizontal(|ui| {
+            for (col, usage) in chunk.iter().enumerate() {
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(grid.chip_w, CHIP_H), egui::Sense::hover());
+                paint_core_chip(ui, rect, row * grid.cols + col, *usage, skin);
+            }
+        });
+    }
 }
 
 /// Um chip de núcleo: "C0" e o percentual em cima, barrinha interna embaixo.
@@ -510,33 +542,83 @@ fn hottest(comps: &Components) -> Option<f32> {
 }
 
 /// Card do CPU: cabeçalho com o uso, sparkline do último minuto e os núcleos.
-fn cpu_card(ui: &mut egui::Ui, lang: Lang, live: &Live, cores: &[f32]) {
+fn cpu_card(ui: &mut egui::Ui, lang: Lang, live: &Live, cores: &[f32], grid: CoreGrid) {
     let skin = Skin::of(ui);
     let cpu = usage_non_negative(live.sys.global_cpu_usage());
     card_head(ui, i18n::t(lang, Key::SysCpu), &format!("· {cpu:.0}%"), skin.accent);
     ui.add_space(6.0);
-    sparkline(ui, &live.cpu_hist, 100.0, skin.accent);
+    sparkline(ui, &live.cpu_hist, 100.0, skin.accent, SPARK_H);
     ui.add_space(10.0);
     ui.label(egui::RichText::new(i18n::t(lang, Key::SysPerCore)).small().color(skin.muted));
     ui.add_space(4.0);
-    core_chips(ui, cores);
+    core_chips(ui, cores, grid);
+}
+
+/// Altura EXTERNA do card do CPU, montada com a MESMA grade que desenha os
+/// chips (cabeçalho + sparkline + rótulo + linhas de chip). Era a conta
+/// divergente do wrap implícito que deixava a última fileira cortada.
+fn cpu_card_h(ui: &egui::Ui, inner_w: f32, cores: usize) -> f32 {
+    let grid = core_grid(inner_w, cores);
+    // O layout vertical cobra o `item_spacing.y` depois de cada WIDGET (o
+    // `add_space` anda o cursor exato, sem folga extra): a conta repete a
+    // sequência exata de [`cpu_card`].
+    let spacing = ui.spacing().item_spacing.y;
+    // Linha do cabeçalho: `ui.horizontal` reserva o `interact_size.y` do tema.
+    let head = ui.spacing().interact_size.y;
+    // Rótulo "por núcleo": `RichText::small()`.
+    let small = ui.text_style_height(&egui::TextStyle::Small);
+    let rows = grid.rows as f32;
+    let inner = (head + spacing)
+        + 6.0
+        + (SPARK_H + spacing)
+        + 10.0
+        + (small + spacing)
+        + 4.0
+        + rows * CHIP_H
+        + (grid.rows.saturating_sub(1)) as f32 * CHIP_GAP;
+    kit::card_outer_height(inner)
 }
 
 /// Card da memória: RAM e swap com rótulo e valor juntos, barra do card.
-fn memory_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
+/// `inner_h` é a altura ÚTIL que a fileira impõe (a do card do CPU, mais alto):
+/// os dois medidores se dividem nela em vez de o painel terminar no meio e
+/// deixar um vazio embaixo. `0.0` = altura natural (cards empilhados).
+fn memory_card(ui: &mut egui::Ui, lang: Lang, live: &Live, inner_h: f32) {
     let skin = Skin::of(ui);
     let total = live.sys.total_memory();
     let used = live.sys.used_memory();
     let frac = if total == 0 { 0.0 } else { used as f32 / total as f32 };
     card_head(ui, i18n::t(lang, Key::SysMemory), &format!("· {:.0}%", frac * 100.0), skin.accent);
     ui.add_space(8.0);
-    meter_row(ui, "RAM", &format!("{} / {}", format_bytes(used), format_bytes(total)), frac, skin.accent);
-    ui.add_space(12.0);
     // Sem arquivo de paginação o swap é 0/0: mostra "0 B / 0 B" (não é erro).
     let total_swap = live.sys.total_swap();
     let used_swap = live.sys.used_swap();
     let swap_frac = if total_swap == 0 { 0.0 } else { used_swap as f32 / total_swap as f32 };
-    meter_row(ui, i18n::t(lang, Key::SysSwap), &format!("{} / {}", format_bytes(used_swap), format_bytes(total_swap)), swap_frac, skin.muted);
+    let ram = |ui: &mut egui::Ui| {
+        let value = format!("{} / {}", format_bytes(used), format_bytes(total));
+        meter_row(ui, "RAM", &value, frac, skin.accent);
+    };
+    let swap = |ui: &mut egui::Ui| {
+        let value = format!("{} / {}", format_bytes(used_swap), format_bytes(total_swap));
+        meter_row(ui, i18n::t(lang, Key::SysSwap), &value, swap_frac, skin.muted);
+    };
+    // O que sobra depois do cabeçalho vira duas metades iguais: o medidor fica
+    // no topo de cada uma (distribuídos, não empilhados no canto de cima). O
+    // `item_spacing` entre as duas metades entra na conta, senão o card fica
+    // mais alto que o do CPU e a fileira desalinha.
+    let consumed = ui.cursor().top() - ui.max_rect().top();
+    let rest = (inner_h - consumed).max(0.0);
+    let gap = ui.spacing().item_spacing.y;
+    if rest > gap {
+        let half = (rest - gap) / 2.0;
+        let width = ui.available_width();
+        ui.allocate_ui_with_layout(egui::vec2(width, half), egui::Layout::top_down(egui::Align::Min), ram);
+        ui.allocate_ui_with_layout(egui::vec2(width, half), egui::Layout::top_down(egui::Align::Min), swap);
+    } else {
+        ram(ui);
+        ui.add_space(12.0);
+        swap(ui);
+    }
 }
 
 /// Card dos discos: um bloco por volume (nome · tipo, uso e barra).
@@ -572,7 +654,7 @@ fn network_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
     let (down, up) = net_deltas(live.nets.as_ref());
     card_head(ui, i18n::t(lang, Key::SysNetwork), &format!("↓ {} · ↑ {}", format_rate(down as u64), format_rate(up as u64)), skin.accent);
     ui.add_space(6.0);
-    sparkline(ui, &live.down_hist, 0.0, skin.accent);
+    sparkline(ui, &live.down_hist, 0.0, skin.accent, SPARK_H_NET);
     ui.add_space(8.0);
     if let Some(nets) = live.nets.as_ref() {
         let mut rows: Vec<(String, u64, u64)> = nets
@@ -712,11 +794,12 @@ fn process_row(ui: &mut egui::Ui, lang: Lang, row: &ProcRow, kill: &mut Option<(
 }
 
 /// Sparkline do histórico. `scale` = teto fixo da série (100 no CPU); zero
-/// significa escala automática pela maior amostra da janela.
-fn sparkline(ui: &mut egui::Ui, hist: &Hist, scale: f32, color: egui::Color32) {
+/// significa escala automática pela maior amostra da janela. `height` é a
+/// altura da faixa (cada card escolhe a sua).
+fn sparkline(ui: &mut egui::Ui, hist: &Hist, scale: f32, color: egui::Color32, height: f32) {
     // Largura do CARD (o chamador está dentro dele): a série ocupa a linha
     // inteira, nunca um pedaço pequeno no canto.
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), SPARK_H), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
     if hist.len() < 2 {
         return;
     }
@@ -766,6 +849,21 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
     let temps_max = state.temps.max;
     let temps_last = state.temps.last;
 
+    // Barra de rolagem DESTA área: a padrão do egui é FLUTUANTE (não reserva
+    // espaço) e pinta o thumb com o `fg_stroke` do tema — quase branco no
+    // escuro. Resultado: um pino claro boiando POR CIMA dos cards. Sólida, o
+    // espaço é reservado no conteúdo e o thumb fica na tinta atenuada do tema.
+    let skin = Skin::of(ui);
+    let mut scroll = ui.spacing().scroll;
+    scroll.floating = false;
+    scroll.bar_width = 8.0;
+    scroll.bar_inner_margin = 6.0;
+    scroll.bar_outer_margin = 2.0;
+    scroll.foreground_color = true;
+    ui.spacing_mut().scroll = scroll;
+    // Repouso na tinta atenuada; hover/pressão sobem pro texto cheio.
+    ui.visuals_mut().widgets.inactive.fg_stroke.color = skin.muted;
+
     egui::ScrollArea::vertical().id_salt("system-scroll").auto_shrink([false, false]).show(ui, |ui| {
         kit::column(ui, CONTENT_W, |ui| {
             let col_w = ui.available_width();
@@ -779,13 +877,15 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
             let card_w = if two_cols { ((col_w - GUTTER - 2.0 * gap) / 2.0).floor() } else { col_w };
 
             // Grade 2×N: CPU | Memória · Discos | Rede. A altura da primeira
-            // linha vem da grade de núcleos (a memória cabe com folga).
+            // linha vem da grade de núcleos (a mesma que desenha os chips) e as
+            // duas células a compartilham — a memória distribui o que sobra.
             let cores: Vec<f32> = live.sys.cpus().iter().map(|core| usage_non_negative(core.usage())).collect();
-            let chip_room = card_w - 2.0 * 14.0 - 2.0;
-            let rows = cores.len().div_ceil(chip_capacity(chip_room)).max(1);
-            let row_h = 124.0 + rows as f32 * (CHIP_H + 6.0);
+            let inner_w = kit::card_inner_width(card_w);
+            let grid = core_grid(inner_w, cores.len());
+            let cpu_h = cpu_card_h(ui, inner_w, cores.len());
+            let mem_inner_h = if two_cols { kit::card_inner_height(cpu_h) } else { 0.0 };
 
-            card_pair(ui, two_cols, card_w, row_h, |ui| cpu_card(ui, lang, live, &cores), |ui| memory_card(ui, lang, live));
+            card_pair(ui, two_cols, card_w, cpu_h, |ui| cpu_card(ui, lang, live, &cores, grid), |ui| memory_card(ui, lang, live, mem_inner_h));
             ui.add_space(GUTTER);
             card_pair(ui, two_cols, card_w, 210.0, |ui| disks_card(ui, lang, live), |ui| network_card(ui, lang, live));
             ui.add_space(GUTTER);
@@ -887,6 +987,21 @@ mod tests {
         assert_eq!(hist.len(), 0);
         assert_eq!(hist.max(), 0.0);
         assert_eq!(hist.iter().next(), None);
+    }
+
+    #[test]
+    fn grade_de_nucleos_preenche_o_card_sem_estourar() {
+        // Larguras reais de card (empilhado e duas colunas) × contagens típicas.
+        for inner_w in [120.0_f32, 240.0, 408.0, 558.0, 770.0] {
+            for cores in [1_usize, 4, 8, 12, 16, 24, 32] {
+                let grid = core_grid(inner_w, cores);
+                assert!(grid.cols >= 1, "sempre cabe pelo menos um chip");
+                assert_eq!(grid.rows, cores.div_ceil(grid.cols).max(1));
+                let used = grid.cols as f32 * grid.chip_w + (grid.cols - 1) as f32 * CHIP_GAP;
+                assert!(used <= inner_w + 0.01, "a linha estoura o card ({used} > {inner_w})");
+                assert!(grid.chip_w >= CHIP_W - 0.01, "o chip não encolhe abaixo da largura-base");
+            }
+        }
     }
 
     #[test]

@@ -24,6 +24,9 @@ const CARD_RADIUS: u8 = 8;
 /// Folga à direita da barra de progresso dentro do card (o trilho não encosta
 /// na borda).
 const PROGRESS_RIGHT_INSET: f32 = 3.0;
+/// Corpo do [`segmented`] (nível 2) e o recuo horizontal de cada lado.
+const SEGMENTED_FONT_SIZE: f32 = 12.0;
+const SEGMENTED_PAD_X: f32 = 9.0;
 
 /// Cores derivadas do tema vigente (nada fixo: a suíte tem mais de uma paleta).
 #[derive(Clone, Copy)]
@@ -254,9 +257,8 @@ pub fn segmented(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Respon
     let skin = Skin::of(ui);
     let enabled = ui.is_enabled();
     let ink = if selected { skin.text } else { skin.muted };
-    let font = egui::FontId::proportional(12.0);
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), font, ink);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(galley.size().x + 18.0, 24.0), egui::Sense::click());
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), segmented_font(), ink);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(galley.size().x + 2.0 * SEGMENTED_PAD_X, 24.0), egui::Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, enabled, selected, label));
     let fill = if selected {
         skin.hover
@@ -268,6 +270,17 @@ pub fn segmented(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Respon
     ui.painter().rect_filled(rect, egui::CornerRadius::same(6), fill);
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, ink);
     resp
+}
+
+/// Fonte do [`segmented`].
+fn segmented_font() -> egui::FontId {
+    egui::FontId::proportional(SEGMENTED_FONT_SIZE)
+}
+
+/// Largura que um [`segmented`] vai ocupar — o chamador mede a fileira antes de
+/// centralizá-la (o layout do egui não mede por nós).
+pub fn segmented_width(ui: &egui::Ui, label: &str) -> f32 {
+    text_width(ui, label, segmented_font()) + 2.0 * SEGMENTED_PAD_X
 }
 
 /// Fio de separação entre os dois níveis de navegação (e entre seções).
@@ -285,14 +298,30 @@ pub fn card<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) ->
     card_h(ui, width, 0.0, add)
 }
 
+/// Largura ÚTIL do corpo de um card de largura externa `width` (recuo dos dois
+/// lados + a borda de 1px). Quem calcula layout dentro do card parte daqui.
+pub fn card_inner_width(width: f32) -> f32 {
+    (width - 2.0 * f32::from(CARD_PAD) - 2.0).max(1.0)
+}
+
+/// Altura ÚTIL do corpo de um card de altura externa `height`.
+pub fn card_inner_height(height: f32) -> f32 {
+    (height - 2.0 * f32::from(CARD_PAD) - 2.0).max(0.0)
+}
+
+/// Altura EXTERNA de um card cujo corpo mede `inner_height` — o inverso de
+/// [`card_inner_height`], para quem dimensiona o card a partir do conteúdo.
+pub fn card_outer_height(inner_height: f32) -> f32 {
+    inner_height + 2.0 * f32::from(CARD_PAD) + 2.0
+}
+
 /// [`card`] com altura mínima externa: as grades de cards (2×N) precisam das
 /// células da mesma linha com a mesma altura.
 pub fn card_h<R>(ui: &mut egui::Ui, width: f32, min_height: f32, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let skin = Skin::of(ui);
-    let pad = f32::from(CARD_PAD);
     // Borda de 1px dos dois lados entra na conta da largura externa.
-    let inner_w = (width - 2.0 * pad - 2.0).max(1.0);
-    let inner_h = (min_height - 2.0 * pad - 2.0).max(0.0);
+    let inner_w = card_inner_width(width);
+    let inner_h = card_inner_height(min_height);
     egui::Frame::NONE
         .fill(skin.elevated)
         .stroke(egui::Stroke::new(1.0_f32, skin.border))

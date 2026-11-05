@@ -30,6 +30,14 @@ const CONTENT_W: f32 = 520.0;
 const DISPLAY_SIZE: f32 = 96.0;
 /// Duração dos presets do timer, em minutos.
 const PRESETS: [u32; 4] = [1, 5, 10, 30];
+/// Largura de um grupo do stepper do alarme (os botões e os dois dígitos).
+const STEP_GROUP_W: f32 = 64.0;
+/// Largura da coluna do ":" entre os dois grupos.
+const COLON_W: f32 = 18.0;
+/// Vão entre os grupos e o ":".
+const STEP_GAP: f32 = 8.0;
+/// Altura do "+"/"−" do stepper (mesma do espaçador do ":").
+const STEP_BUTTON_H: f32 = 28.0;
 
 /// Modo do relógio (as pills do topo do painel).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -408,7 +416,15 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, alarms: &mut 
     kit::column(ui, CONTENT_W, |ui| {
         // Nível 2 (Temporizador · Pomodoro · Cronômetro · Alarmes): segmented
         // control menor, separado por hairline das pills de nível 1.
-        ui.horizontal(|ui| {
+        // Centralizado na largura da coluna: encostado à esquerda sobrava
+        // metade da fileira morta à direita.
+        let gap = ui.spacing().item_spacing.x;
+        let mut modes_w = 0.0;
+        for mode in Mode::ALL {
+            modes_w += kit::segmented_width(ui, i18n::t(lang, mode.label_key())) + gap;
+        }
+        modes_w -= gap;
+        centered_row(ui, modes_w, |ui| {
             for mode in Mode::ALL {
                 if kit::segmented(ui, i18n::t(lang, mode.label_key()), state.mode == mode).clicked() {
                     state.mode = mode;
@@ -643,43 +659,48 @@ fn stopwatch_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, now: u64)
 /// remoção SEMPRE visível) dentro de um card + o botão "+ alarme", que abre o
 /// popover de escolha da hora.
 fn alarms_ui(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, alarms: &mut Vec<(String, String)>, out: &mut Outcome) {
-    let skin = Skin::of(ui);
     let mut remove = None;
-    let width = ui.available_width();
-    kit::card(ui, width, |ui| {
-        if alarms.is_empty() {
-            ui.label(egui::RichText::new(i18n::t(lang, Key::ClockAlarmsEmpty)).color(skin.muted));
-        }
-        for (index, (time, label)) in alarms.iter().enumerate() {
-            let width = ui.available_width().max(1.0);
-            let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 40.0), egui::Sense::hover());
-            if resp.hovered() {
-                ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
+    // Com o popover aberto o card NÃO desenha conteúdo: o modal fica sobre o
+    // centro da janela e a lista por baixo aparecia truncada nas beiradas
+    // ("Nenhu…", "+ ad…") — o backdrop do kit escurece, mas não esconde.
+    if !state.alarm_open {
+        let skin = Skin::of(ui);
+        let width = ui.available_width();
+        kit::card(ui, width, |ui| {
+            if alarms.is_empty() {
+                ui.label(egui::RichText::new(i18n::t(lang, Key::ClockAlarmsEmpty)).color(skin.muted));
             }
-            let inner = rect.shrink2(egui::vec2(8.0, 0.0));
-            let mut row = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            row.label(egui::RichText::new(time).font(egui::FontId::monospace(16.0)).color(skin.text));
-            row.add_space(10.0);
-            if !label.is_empty() {
-                row.add(egui::Label::new(egui::RichText::new(label).color(skin.text)).truncate());
-            }
-            row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Remover SEMPRE visível, em ghost discreto e tinta do tema. O
-                // botão só no hover da linha piscava: quando o ponteiro chegava
-                // nele, o próprio botão bloqueava o hover da LINHA e o "×"
-                // sumia — clique e visibilidade brigavam pelo mesmo pixel.
-                if kit::ghost_action(ui, "×").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
-                    remove = Some(index);
+            for (index, (time, label)) in alarms.iter().enumerate() {
+                let width = ui.available_width().max(1.0);
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 40.0), egui::Sense::hover());
+                if resp.hovered() {
+                    ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
                 }
-                kit::badge(ui, "⏰", skin.accent);
-            });
-            kit::hairline(ui);
-        }
-        ui.add_space(8.0);
-        if kit::pill(ui, i18n::t(lang, Key::ClockAlarmAdd), true).clicked() {
-            state.alarm_open = true;
-        }
-    });
+                let inner = rect.shrink2(egui::vec2(8.0, 0.0));
+                let mut row = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)));
+                row.label(egui::RichText::new(time).font(egui::FontId::monospace(16.0)).color(skin.text));
+                row.add_space(10.0);
+                if !label.is_empty() {
+                    row.add(egui::Label::new(egui::RichText::new(label).color(skin.text)).truncate());
+                }
+                row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Remover SEMPRE visível, em ghost discreto e tinta do tema. O
+                    // botão só no hover da linha piscava: quando o ponteiro chegava
+                    // nele, o próprio botão bloqueava o hover da LINHA e o "×"
+                    // sumia — clique e visibilidade brigavam pelo mesmo pixel.
+                    if kit::ghost_action(ui, "×").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
+                        remove = Some(index);
+                    }
+                    kit::badge(ui, "⏰", skin.accent);
+                });
+                kit::hairline(ui);
+            }
+            ui.add_space(8.0);
+            if kit::pill(ui, i18n::t(lang, Key::ClockAlarmAdd), true).clicked() {
+                state.alarm_open = true;
+            }
+        });
+    }
     if let Some(index) = remove {
         alarms.remove(index);
         out.cfg_changed = true;
@@ -693,7 +714,6 @@ fn alarm_popover(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, alarms: 
     if !state.alarm_open {
         return;
     }
-    let skin = Skin::of(ui);
     let mut add = false;
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clock-alarm-new")).frame(kit::modal_frame(ui.ctx())).show(ui.ctx(), |ui| {
@@ -701,24 +721,27 @@ fn alarm_popover(ui: &mut egui::Ui, lang: Lang, state: &mut ClockState, alarms: 
         ui.set_width(320.0);
         ui.heading(i18n::t(lang, Key::ClockAlarms));
         ui.add_space(12.0);
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.label(egui::RichText::new(i18n::t(lang, Key::ClockHour)).small().color(skin.muted));
-                let mut hour = state.alarm_hour;
-                if stepper(ui, "clock-alarm-hour", &mut hour, 23) {
-                    state.alarm_hour = hour;
-                }
-            });
-            ui.add_space(6.0);
-            ui.label(egui::RichText::new(":").font(egui::FontId::monospace(28.0)).color(skin.muted));
-            ui.add_space(6.0);
-            ui.vertical(|ui| {
-                ui.label(egui::RichText::new(i18n::t(lang, Key::ClockMinute)).small().color(skin.muted));
-                let mut minute = state.alarm_minute;
-                if stepper(ui, "clock-alarm-minute", &mut minute, 59) {
-                    state.alarm_minute = minute;
-                }
-            });
+        // Fileira dos steppers: rótulos ACIMA de cada grupo, os dois números no
+        // MESMO eixo e o ":" no meio. Cada grupo tem largura EXPLÍCITA — um
+        // `ui.vertical` dentro de um `horizontal` herda a largura toda, empurrava
+        // o resto da fileira pra fora e o "Minuto" virava texto vertical.
+        let mut hour = state.alarm_hour;
+        let mut minute = state.alarm_minute;
+        let row_w = 2.0 * STEP_GROUP_W + COLON_W + 2.0 * STEP_GAP;
+        ui.horizontal_top(|ui| {
+            // Vão explícito entre os grupos: com o `item_spacing.x` zerado a
+            // conta de centralização não depende das folgas automáticas.
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.add_space(((ui.available_width() - row_w) / 2.0).max(0.0));
+            if stepper_group(ui, "clock-alarm-hour", i18n::t(lang, Key::ClockHour), &mut hour, 23) {
+                state.alarm_hour = hour;
+            }
+            ui.add_space(STEP_GAP);
+            stepper_colon(ui);
+            ui.add_space(STEP_GAP);
+            if stepper_group(ui, "clock-alarm-minute", i18n::t(lang, Key::ClockMinute), &mut minute, 59) {
+                state.alarm_minute = minute;
+            }
         });
         ui.add_space(12.0);
         ui.add(kit::line(&mut state.alarm_label).hint_text(i18n::t(lang, Key::ClockAlarmLabel)).desired_width(f32::INFINITY));
@@ -767,12 +790,45 @@ fn stepper(ui: &mut egui::Ui, id: &str, value: &mut u32, max: u32) -> bool {
     changed
 }
 
+/// Grupo do stepper (rótulo em cima, "+", dígitos e "−" embaixo) com largura
+/// PRÓPRIA: dentro de um `horizontal`, `ui.vertical` herda a largura toda e o
+/// segundo grupo era empurrado pra fora da janela.
+fn stepper_group(ui: &mut egui::Ui, id: &str, label: &str, value: &mut u32, max: u32) -> bool {
+    let skin = Skin::of(ui);
+    let mut changed = false;
+    ui.scope(|ui| {
+        ui.set_width(STEP_GROUP_W);
+        ui.vertical_centered(|ui| {
+            ui.label(egui::RichText::new(label).small().color(skin.muted));
+            changed = stepper(ui, id, value, max);
+        });
+    });
+    changed
+}
+
+/// O ":" entre os dois grupos, alinhado ao eixo dos DÍGITOS: as duas linhas de
+/// cima são reservadas com a MESMA altura dos grupos (rótulo e "+"), senão ele
+/// subia pro nível do rótulo.
+fn stepper_colon(ui: &mut egui::Ui) {
+    let skin = Skin::of(ui);
+    ui.scope(|ui| {
+        ui.set_width(COLON_W);
+        ui.vertical_centered(|ui| {
+            // Mesma altura do rótulo pequeno dos grupos.
+            ui.label(egui::RichText::new(" ").small());
+            // Mesma altura do "+" (a área é só espaçador, não pinta nada).
+            let _ = ui.allocate_exact_size(egui::vec2(COLON_W, STEP_BUTTON_H), egui::Sense::hover());
+            ui.label(egui::RichText::new(":").font(egui::FontId::monospace(28.0)).color(skin.muted));
+        });
+    });
+}
+
 /// Botão de 34×28 do stepper (área de clique folgada, tinta do tema).
 fn step_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let skin = Skin::of(ui);
     let font = egui::TextStyle::Button.resolve(ui.style());
     let galley = ui.painter().layout_no_wrap(label.to_owned(), font, skin.text);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(34.0, 28.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(34.0, STEP_BUTTON_H), egui::Sense::click());
     if resp.hovered() {
         ui.painter().rect_filled(rect, egui::CornerRadius::same(6), skin.hover);
     }
