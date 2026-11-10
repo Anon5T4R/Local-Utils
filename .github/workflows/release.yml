@@ -40,79 +40,36 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Dependencies
+      - name: Dependências de empacotamento
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev
-      - name: Build release
-        run: cargo build --release --bin local-utils
-      - name: Package
-        run: |
-          set -euo pipefail
-          export APPIMAGE_EXTRACT_AND_RUN=1
-          mkdir -p out
-          version=$(grep '^version =' Cargo.toml | head -1 | sed 's/.*= "\([^"]*\)".*/\1/')
-          appdir="AppDir-local-utils"
-          mkdir -p "$appdir/usr/bin"
-          cp "target/release/local-utils" "$appdir/usr/bin/"
-          cp "icons/icon.png" "$appdir/local-utils.png"
-          printf '[Desktop Entry]\nType=Application\nName=Local Utils\nExec=local-utils\nIcon=local-utils\nCategories=Utility;\nComment=Utilitários do cotidiano 100%% locais e offline\nTerminal=false\nStartupWMClass=local-utils\n' > "$appdir/local-utils.desktop"
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          chmod +x linuxdeploy-x86_64.AppImage
-          ./linuxdeploy-x86_64.AppImage --appdir "$appdir" \
-            --desktop-file "$appdir/local-utils.desktop" \
-            --icon-file "$appdir/local-utils.png" --output appimage
-          ls -la *.AppImage 2>/dev/null || true
-          # Nomes no padrão da suíte, que o updater (craft_update) parseia:
-          # <app>-<version>-<os>-<arch>.<ext>. O Name/Desktop entry tem espaço
-          # ("Local Utils"), então o linuxdeploy batiza o arquivo com
-          # underscore (Local_Utils-x86_64.AppImage) — esperado.
-          if ls Local?Utils*.AppImage 1>/dev/null 2>&1; then
-            mv Local?Utils*.AppImage "out/local-utils-$version-linux-x86_64.AppImage"
-          fi
-          tar -czf "out/local-utils-$version-linux-x86_64.tar.gz" -C "target/release" local-utils
-          ls -la out
+          sudo apt-get install -y libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev zsync
+          curl -sSfL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_amd64.deb -o /tmp/nfpm.deb
+          sudo dpkg -i /tmp/nfpm.deb
+      - name: Build e pacote
+        run: packaging/linux/package.sh --formats "appimage deb rpm tar"
       - uses: actions/upload-artifact@v7
         with:
           name: linux
-          path: out/
+          path: dist/release/*
           if-no-files-found: error
 
   arch:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
+    container: archlinux:base
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Valida PKGBUILD
+      - name: Valida PKGBUILD (parse real com makepkg)
+        # makepkg se recusa a rodar como root, e o container do Actions entra como
+        # root: o parse roda com um usuário sem privilégios.
         run: |
-          version=$(grep '^version =' Cargo.toml | head -1 | sed 's/.*= "\([^"]*\)".*/\1/')
-          cat > PKGBUILD <<EOF
-          pkgname=local-utils
-          pkgver=$version
-          pkgrel=1
-          pkgdesc='Utilitários do cotidiano 100% locais e offline — clipboard na bandeja'
-          arch=(x86_64)
-          url='https://github.com/Anon5T4R/Local-Utils'
-          license=(GPL-3.0-or-later)
-          depends=(glibc gcc-libs libxcb libxrandr libxi libxcursor libxkbcommon)
-          makedepends=(rust cargo)
-          source=("local-utils-$pkgver.tar.gz::https://github.com/Anon5T4R/Local-Utils/archive/refs/tags/v$pkgver.tar.gz")
-          sha256sums=(SKIP)
-          build() {
-            cd "local-utils-$pkgver"
-            cargo build --release --bin local-utils
-          }
-          package() {
-            cd "local-utils-$pkgver"
-            install -Dm755 "target/release/local-utils" "$pkgdir/usr/bin/local-utils"
-            install -Dm644 "icons/icon.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/local-utils.png"
-            install -Dm644 "packaging/linux/local-utils.desktop" "$pkgdir/usr/share/applications/local-utils.desktop"
-          }
-          EOF
-          namcap PKGBUILD || true
-          echo "PKGBUILD gerado e validado"
+          useradd -m builder
+          chown -R builder:builder packaging
+          su builder -c 'cd packaging/arch && makepkg --printsrcinfo >/dev/null'
+          echo "PKGBUILD ok"
 
   publish:
     needs: [windows, linux, arch]
