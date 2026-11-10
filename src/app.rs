@@ -23,6 +23,7 @@ use crate::hotkey::{self, HotkeyEvent};
 use crate::ocr::{self, Ocr};
 use crate::options::{self, OptionsState};
 use crate::picker::{self, PickerState};
+use crate::pickers;
 use crate::popup::{self, Popup};
 use crate::shot_editor::{self, Shot};
 use crate::system::{self, SystemState};
@@ -92,6 +93,9 @@ pub struct UtilsApp {
     /// Verificação e instalação de atualização (craft_update): check no
     /// arranque/pedido, prompt egui próprio e self-update em thread própria.
     updater: craft_update::updater::Updater,
+    /// Seletor nativo async (src/pickers.rs): a resposta chega num frame
+    /// posterior, como closure — cada fluxo tem a sua continuação.
+    pickers: pickers::Pickers,
     /// Histórico de clipboard (motor em `history.rs`): carregado do disco no
     /// arranque e regravado a cada cópia nova ou mutação da aba.
     history: history::History,
@@ -196,6 +200,7 @@ impl UtilsApp {
             last_seq: 0,
             update_note: None,
             updater: craft_update::updater::Updater::new(&craft_update::suite::LOCALUTILS, CURRENT_VERSION),
+            pickers: pickers::Pickers::default(),
             history,
             clip_ui: ClipboardUiState::default(),
             clip_rx,
@@ -467,32 +472,47 @@ impl UtilsApp {
                 eprintln!("config: {e}");
             }
         }
+        // Seletor nativo assíncrono (`src/pickers.rs`): o diálogo abre agora e
+        // o export/import roda na continuação, num frame posterior. Cancelou
+        // (paths vazios) = nada acontece, como antes.
         if opts.export {
-            if let Some(path) = transfer::pick_export(&transfer::export_name()) {
-                self.set_status(match transfer::export_to(&path, &self.history) {
-                    Ok(()) => i18n::t(self.cfg.lang, Key::Exported).to_string(),
-                    Err(e) => format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::ExportFailed)),
-                });
-            }
+            let lang = self.cfg.lang;
+            let dialog = transfer::export_dialog(&transfer::export_name());
+            let _ = self.pickers.ask(
+                ctx,
+                pickers::Ask::Save(dialog),
+                Box::new(move |app, paths| {
+                    let Some(path) = paths.first() else { return };
+                    let status = match transfer::export_to(path, &app.history) {
+                        Ok(()) => i18n::t(lang, Key::Exported).to_string(),
+                        Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::ExportFailed)),
+                    };
+                    app.set_status(status);
+                }),
+            );
         }
         if opts.import {
-            if let Some(path) = transfer::pick_open() {
-                // Mensagem primeiro, efeitos depois: `set_status` e os
-                // efeitos do Ok não podem disputar o borrow do `import_into`.
-                let lang = self.cfg.lang;
-                let outcome = transfer::import_into(&path, &mut self.history);
-                match outcome {
-                    Ok(()) => {
-                        self.save_history();
-                        // O import pode mexer na lista sem mudar o tamanho: o
-                        // cache da lista filtrada precisa ser descartado.
-                        self.clip_ui.invalidate();
-                        ctx.request_repaint();
-                        self.set_status(i18n::t(lang, Key::Imported).to_string());
+            let lang = self.cfg.lang;
+            let dialog = transfer::open_dialog();
+            let _ = self.pickers.ask(
+                ctx,
+                pickers::Ask::File(dialog),
+                Box::new(move |app, paths| {
+                    let Some(path) = paths.first() else { return };
+                    // Efeitos primeiro, mensagem depois: `set_status` e os
+                    // efeitos do Ok não podem disputar o borrow do `import_into`.
+                    match transfer::import_into(path, &mut app.history) {
+                        Ok(()) => {
+                            app.save_history();
+                            // O import pode mexer na lista sem mudar o tamanho:
+                            // o cache da lista filtrada precisa ser descartado.
+                            app.clip_ui.invalidate();
+                            app.set_status(i18n::t(lang, Key::Imported).to_string());
+                        }
+                        Err(e) => app.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::ImportFailed))),
                     }
-                    Err(e) => self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::ImportFailed))),
-                }
-            }
+                }),
+            );
         }
     }
 }
@@ -592,6 +612,11 @@ impl eframe::App for UtilsApp {
         // (piscar 4s no rodapé era fácil de perder — "o botão não fez nada");
         // release nova abre o prompt do updater.
         self.updater.tick(ctx);
+        // Seletor nativo (src/pickers.rs): consome as respostas que chegaram
+        // da thread (ela acorda este frame com request_repaint).
+        for picked in self.pickers.take() {
+            (picked.then)(self, picked.paths);
+        }
         match self.updater.status().clone() {
             craft_update::updater::Status::UpToDate => {
                 self.update_note = Some(format!("{} ({})", i18n::t(self.cfg.lang, Key::UpToDate), CURRENT_VERSION));
@@ -660,6 +685,7 @@ impl eframe::App for UtilsApp {
         let mut outcome = clipboard_ui::Outcome::default();
         let mut shot_status: Option<String> = None;
         let mut shot_discarded = false;
+        let mut shot_save = false;
         let mut tool_status: Option<String> = None;
         let mut tool_cfg = false;
         let mut tool_history = false;
@@ -667,6 +693,7 @@ impl eframe::App for UtilsApp {
         let mut picker_cfg = false;
         let mut picker_history = false;
         let mut convert_status: Option<String> = None;
+        let mut convert_pick = false;
         let mut system_status: Option<String> = None;
         // Folga nas bordas do painel central: as abas vivem dentro de uma
         // margem segura em vez de encostar na borda (e o rodapé não é cortado).
@@ -697,6 +724,7 @@ impl eframe::App for UtilsApp {
                     let shot = shot_editor::show(ui, self.cfg.lang, &self.cfg.hotkey_screenshot, self.shot.as_mut());
                     shot_status = shot.status;
                     shot_discarded = shot.discard;
+                    shot_save = shot.save;
                 }
                 // Ferramentas: relógio, calculadora, conversor e dev tools.
                 Tab::Tools => {
@@ -722,6 +750,7 @@ impl eframe::App for UtilsApp {
                 Tab::Converter => {
                     let conv = convert::show(ui, self.cfg.lang, &mut self.convert);
                     convert_status = conv.status;
+                    convert_pick = conv.pick;
                 }
                 // Sistema: monitor de CPU/memória/discos/rede/bateria/processos.
                 Tab::Sistema => {
@@ -752,6 +781,30 @@ impl eframe::App for UtilsApp {
         if shot_discarded {
             self.shot = None;
             ctx.request_repaint();
+        }
+        // "Salvar como" do editor: abre o seletor nativo agora e grava na
+        // continuação, num frame posterior (o diálogo não bloqueia a UI).
+        // Cancelou (paths vazios) = silêncio, como antes; se a captura foi
+        // descartada enquanto o painel estava aberto, não há o que salvar.
+        if shot_save {
+            let lang = self.cfg.lang;
+            let dialog = shot_editor::save_dialog();
+            let _ = self.pickers.ask(
+                ctx,
+                pickers::Ask::Save(dialog),
+                Box::new(move |app, paths| {
+                    let Some(path) = paths.first() else { return };
+                    let Some(shot) = app.shot.as_ref() else { return };
+                    let status = shot_editor::save_to(shot, path, lang);
+                    app.set_status(status);
+                }),
+            );
+        }
+        // "Selecionar arquivos" do conversor: idem — a fila entra quando a
+        // resposta chega (o drop na janela continua sendo o caminho direto).
+        if convert_pick {
+            let dialog = convert::files_dialog(self.cfg.lang);
+            let _ = self.pickers.ask(ctx, pickers::Ask::Files(dialog), Box::new(|app, paths| app.convert.enqueue(paths)));
         }
         // Ferramentas: o "copiar" de um resultado cria entrada Text nova no
         // histórico de clipboard; os alarmes editados vão pro config.

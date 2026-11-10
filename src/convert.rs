@@ -1,9 +1,9 @@
 //! Aba Converter: converte imagens entre PNG/JPEG/WebP numa fila com progresso.
 //!
 //! A UX é UMA zona de soltar (o `egui` entrega os arquivos no `raw_input` da
-//! janela) + o botão nativo de seleção múltipla (só Windows: o `rfd` é
-//! `cfg(windows)` no `Cargo.toml` — no Linux a fila entra pelo drop, que é
-//! cross-platform). Cada arquivo vira uma linha com tipo DETECTADO PELO HEADER
+//! janela) + o botão nativo de seleção múltipla (o `rfd` é cross-platform:
+//! `src/pickers.rs` abre o portal XDG no Linux). Cada arquivo vira uma linha
+//! com tipo DETECTADO PELO HEADER
 //! (a extensão mente: renomear `.png` pra `.jpg` é comum) e um destino.
 //!
 //! A conversão roda numa thread própria com canal de progresso (mesmo desenho
@@ -29,8 +29,6 @@ use utils_ui::i18n::{self, Key, Lang};
 use crate::ui::{self as kit, Skin};
 
 /// Extensões oferecidas no seletor nativo (o tipo de verdade é o header).
-/// Windows only: é a lista do `rfd`, que só existe lá.
-#[cfg(windows)]
 const PICK_FILTER: &[&str] = &["png", "jpg", "jpeg", "webp", "jxl"];
 /// Qualidade padrão do JPEG (0–100).
 const DEFAULT_QUALITY: u8 = 90;
@@ -163,6 +161,9 @@ impl Default for ConvertState {
 #[derive(Default)]
 pub struct Outcome {
     pub status: Option<String>,
+    /// "Selecionar arquivos" foi clicado: o APP abre o seletor nativo
+    /// (`src/pickers.rs`), que precisa do app mutável na continuação.
+    pub pick: bool,
 }
 
 impl ConvertState {
@@ -212,7 +213,7 @@ impl ConvertState {
 
     /// Põe os arquivos na fila: lê o header AGORA (é barato) pra saber o tipo e
     /// se a linha tem alvo. Arquivo ilegível/não-imagem entra com aviso.
-    fn enqueue(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+    pub(crate) fn enqueue(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
         for path in paths {
             let src = detect_path(&path);
             let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
@@ -277,14 +278,10 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
     ui.add_space(8.0);
 
     ui.horizontal(|ui| {
-        // rfd é `cfg(windows)` no Cargo.toml: no Linux a fila entra pelo drop.
-        #[cfg(windows)]
-        {
-            if kit::pill(ui, i18n::t(lang, Key::SelectFiles), true).clicked() {
-                if let Some(paths) = pick_files(lang) {
-                    state.enqueue(paths);
-                }
-            }
+        // Seletor nativo assíncrono (`src/pickers.rs`): o clique só PEDE o
+        // diálogo — o app abre e enfileira na continuação, num frame posterior.
+        if kit::pill(ui, i18n::t(lang, Key::SelectFiles), true).clicked() {
+            out.pick = true;
         }
         ui.add_space(8.0);
         ui.label(i18n::t(lang, Key::Quality));
@@ -398,10 +395,10 @@ fn take_dropped(ctx: &egui::Context) -> Vec<PathBuf> {
     ctx.input(|i| i.raw.dropped_files.iter().map(|file| file.path().to_path_buf()).collect())
 }
 
-/// Seletor nativo de múltiplos arquivos (só Windows: o `rfd` é `cfg(windows)`).
-#[cfg(windows)]
-fn pick_files(lang: Lang) -> Option<Vec<PathBuf>> {
-    rfd::FileDialog::new().add_filter(i18n::t(lang, Key::FilterImages), PICK_FILTER).pick_files()
+/// Diálogo nativo de múltiplos arquivos, montado pra fila assíncrona
+/// (`src/pickers.rs`): quem espera a resposta é a thread de lá.
+pub(crate) fn files_dialog(lang: Lang) -> rfd::AsyncFileDialog {
+    rfd::AsyncFileDialog::new().add_filter(i18n::t(lang, Key::FilterImages), PICK_FILTER)
 }
 
 // ── detecção, nomes e conversão ──────────────────────────────────────────

@@ -17,6 +17,8 @@
 //! testes cobrem: tamanho, região afetada por cada tipo de anotação, crop e
 //! desfazer.
 
+use std::path::Path;
+
 use eframe::egui;
 use image::{imageops, RgbaImage};
 use utils_ui::i18n::{self, Key, Lang};
@@ -440,6 +442,9 @@ pub struct Outcome {
     pub status: Option<String>,
     /// "Descartar captura": o app limpa o `shot` e a aba volta pro empty-state.
     pub discard: bool,
+    /// "Salvar": o APP abre o seletor nativo (`src/pickers.rs`) e grava o PNG
+    /// na continuação — o diálogo não pode bloquear o frame.
+    pub save: bool,
 }
 
 /// Desenha a aba. Sem captura pendente, mostra a dica do atalho.
@@ -546,7 +551,9 @@ fn toolbar(ui: &mut egui::Ui, lang: Lang, shot: &mut Shot, out: &mut Outcome) {
             out.status = Some(copy_to_clipboard(shot, lang));
         }
         if kit::pill(ui, t(Key::SaveShot), true).clicked() {
-            out.status = Some(save_png(shot, lang));
+            // Seletor nativo assíncrono (`src/pickers.rs`): o app abre o
+            // "Salvar como" e grava na continuação.
+            out.save = true;
         }
         // Descartar: ação BARATA (capturar de novo é um atalho), então sem
         // modal — ghost discreto na tinta do tema, nunca vermelho.
@@ -885,27 +892,24 @@ fn copy_to_clipboard(shot: &Shot, lang: Lang) -> String {
     }
 }
 
-/// "Salvar como" (PNG). Cancelar o diálogo não deixa mensagem no rodapé.
-#[cfg(windows)]
-fn save_png(shot: &Shot, lang: Lang) -> String {
-    let Some(path) = rfd::FileDialog::new().add_filter("PNG", &["png"]).set_file_name(default_name()).save_file() else {
-        return String::new();
-    };
+/// Diálogo "Salvar como" (PNG) com o nome sugerido. Quem espera a resposta é a
+/// thread de `src/pickers.rs`; cancelar chega como paths vazios (silêncio).
+pub(crate) fn save_dialog() -> rfd::AsyncFileDialog {
+    rfd::AsyncFileDialog::new().add_filter("PNG", &["png"]).set_file_name(default_name())
+}
+
+/// Renderiza o resultado (recorte + anotações) e grava o PNG no caminho
+/// escolhido. Devolve a mensagem pronta pro rodapé.
+pub(crate) fn save_to(shot: &Shot, path: &Path, lang: Lang) -> String {
     let img = render(&shot.base, shot.edits.crop(), shot.edits.annotations());
     let (w, h) = img.dimensions();
-    match image::save_buffer(&path, img.as_raw(), w, h, image::ExtendedColorType::Rgba8) {
+    match image::save_buffer(path, img.as_raw(), w, h, image::ExtendedColorType::Rgba8) {
         Ok(()) => i18n::t(lang, Key::ShotSaved).to_string(),
         Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::ShotSaveFailed)),
     }
 }
 
-#[cfg(not(windows))]
-fn save_png(_shot: &Shot, lang: Lang) -> String {
-    format!("⚠ {}", i18n::t(lang, Key::WindowsOnly))
-}
-
 /// Nome sugerido do arquivo: `screenshot-AAAAMMDD-hhmmss.png`.
-#[cfg(windows)]
 fn default_name() -> String {
     let ms = history::now_ms();
     let days = i64::try_from(ms / 86_400_000).unwrap_or(0);

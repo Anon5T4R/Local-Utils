@@ -19,6 +19,7 @@ mod ocr;
 mod options;
 mod paste;
 mod picker;
+mod pickers;
 mod popup;
 mod shot_editor;
 mod system;

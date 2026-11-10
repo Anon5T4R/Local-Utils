@@ -271,17 +271,13 @@ pub fn show(ctx: &egui::Context, lang: Lang, state: &mut OptionsState) -> Outcom
 
         // ── export/import do histórico ────────────────────────────────
         ui.horizontal(|ui| {
-            let export = ui.add_enabled_ui(windows, |ui| kit::pill(ui, t(Key::ExportHistory), false)).inner;
-            let import = ui.add_enabled_ui(windows, |ui| kit::pill(ui, t(Key::ImportHistory), false)).inner;
-            if export.clicked() {
+            // Cross-platform agora: o seletor nativo vem de `src/pickers.rs`
+            // (Windows nativo, Linux via portal XDG).
+            if kit::pill(ui, t(Key::ExportHistory), false).clicked() {
                 out.export = true;
             }
-            if import.clicked() {
+            if kit::pill(ui, t(Key::ImportHistory), false).clicked() {
                 out.import = true;
-            }
-            if !windows {
-                export.on_hover_text(t(Key::WindowsOnly));
-                import.on_hover_text(t(Key::WindowsOnly));
             }
         });
 

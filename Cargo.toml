@@ -58,6 +58,13 @@ md-5 = "0.10"
 # self-update (Windows: MSI/portable; Linux: AppImage/tar.gz). O `egui` liga o
 # prompt e o Updater de UI.
 craft-update = { path = "libs/craft-libs/crates/update", features = ["egui"] }
+# Seletor NATIVO de arquivo/pasta. Defaults do rfd 0.17 no Linux = backend
+# XDG portal (Rust puro via zbus, fallback Zenity) — mesmo padrão dos apps
+# maduros (local-pdf e irmãos); chamadas via AsyncFileDialog + thread worker
+# (src/pickers.rs, molde do local-pdf). Windows segue o diálogo nativo.
+rfd = "0.17"
+# Espera o seletor nativo fora da thread de UI (já no grafo via wgpu).
+pollster = "1.0"
 # QR do item do clipboard: só a MATRIZ (o app desenha os módulos no painter) —
 # a feature `image` do crate reaproveita o `image 0.25` que já está no grafo,
 # nenhuma crate nova entra por causa disso.
@@ -88,9 +95,6 @@ sysinfo = { version = "0.40", default-features = false, features = ["system", "d
 # Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e
 # imagem) — mesma crate que o local-keys usa; já vinha no grafo pelo arboard.
 clipboard-win = "5.4"
-# Diálogo nativo de abrir/salvar (export/import do `.lutils`). Sem as default
-# features: o backend win32 é o que vale e o gtk do Linux engordaria o AppImage.
-rfd = { version = "0.17", default-features = false }
 # Bandeja: MESMA crate/versão do local-keys (tray-icon 0.24). Só no Windows —
 # no Linux o tray-icon puxaria muda→gtk3 pra dentro do AppImage.
 tray-icon = "0.24"

@@ -7,10 +7,10 @@
 //! histórico de agora — dedupe por `id` (fica a entrada mais nova por `ts_ms`)
 //! e por conteúdo (a mesma cópia com id diferente vira uma só).
 //!
-//! A lógica é cross-platform; só o diálogo nativo (`rfd`) é do Windows. Fora
-//! dele os botões ficam desabilitados com tooltip.
+//! A lógica é cross-platform; o diálogo é o seletor nativo assíncrono de
+//! `src/pickers.rs` (Windows: nativo; Linux: portal XDG).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::history::{self, History};
 
@@ -27,26 +27,15 @@ fn today_stamp() -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
-/// Diálogo "Salvar como" do export. `None` = cancelado.
-#[cfg(windows)]
-pub fn pick_export(name: &str) -> Option<PathBuf> {
-    rfd::FileDialog::new().add_filter("Histórico do Local Utils (.lutils)", &["lutils"]).set_file_name(name).save_file()
+/// Diálogo "Salvar como" do export, com o nome sugerido. Quem espera a
+/// resposta é a thread de `src/pickers.rs`; paths vazios de lá = cancelado.
+pub fn export_dialog(name: &str) -> rfd::AsyncFileDialog {
+    rfd::AsyncFileDialog::new().add_filter("Histórico do Local Utils (.lutils)", &["lutils"]).set_file_name(name)
 }
 
-#[cfg(not(windows))]
-pub fn pick_export(_name: &str) -> Option<PathBuf> {
-    None
-}
-
-/// Diálogo "Abrir" do import. `None` = cancelado.
-#[cfg(windows)]
-pub fn pick_open() -> Option<PathBuf> {
-    rfd::FileDialog::new().add_filter("Histórico do Local Utils (.lutils)", &["lutils"]).pick_file()
-}
-
-#[cfg(not(windows))]
-pub fn pick_open() -> Option<PathBuf> {
-    None
+/// Diálogo "Abrir" do import.
+pub fn open_dialog() -> rfd::AsyncFileDialog {
+    rfd::AsyncFileDialog::new().add_filter("Histórico do Local Utils (.lutils)", &["lutils"])
 }
 
 /// Grava o histórico no caminho escolhido (atômico: tmp + rename).
