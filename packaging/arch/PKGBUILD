@@ -7,7 +7,7 @@
 #   makepkg -si
 
 pkgname=local-utils
-pkgver=0.6.1
+pkgver=0.6.2
 pkgrel=1
 pkgdesc='Utilitários do cotidiano 100% locais e offline — clipboard na bandeja'
 arch=(x86_64)
