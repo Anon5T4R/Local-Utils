@@ -4,7 +4,6 @@ Name=Local Utils
 GenericName=Utilities
 Keywords=utils;utilities;tools;clipboard;calculator;screenshot;local;
 Exec=local-utils
-TryExec=local-utils
 Icon=local-utils
 Categories=Utility;
 Comment=Utilitários do cotidiano 100% locais e offline — clipboard na bandeja
