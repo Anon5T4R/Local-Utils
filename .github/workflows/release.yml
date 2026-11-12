@@ -97,7 +97,10 @@ jobs:
           chown -R builder "$work"
           cd "$work"
           su builder -c 'makepkg --noconfirm --noprogressbar -d'
-          mv local-utils-*.pkg.tar.zst "$GITHUB_WORKSPACE/"
+          # Asset no padrao da suite (<id>-<ver>-linux-<arch>): o pacman instala pelo
+          # .PKGINFO interno (pkgname=ai.storyteller.local-utils), o nome do arquivo e so o contrato do updater.
+          mv ai.storyteller.local-utils-$version-*.pkg.tar.zst "local-utils-$version-linux-x86_64.pkg.tar.zst"
+          mv "local-utils-$version-linux-x86_64.pkg.tar.zst" "$GITHUB_WORKSPACE/"
           ls -lh "$GITHUB_WORKSPACE"/*.pkg.tar.zst
       - uses: actions/upload-artifact@v7
         with:

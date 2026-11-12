@@ -5,13 +5,15 @@
 #
 #   makepkg -si   (local, com o tarball da release ao lado)
 
-pkgname=local-utils
+pkgname=ai.storyteller.local-utils
 pkgver=0.6.6
 pkgrel=1
 pkgdesc='Utilitários do cotidiano 100% locais e offline — clipboard na bandeja'
 arch=(x86_64)
 url='https://github.com/Anon5T4R/Local-Utils'
 license=('GPL-3.0-or-later')
+provides=('local-utils')
+conflicts=('local-utils')
 depends=(glibc gcc-libs libxcb libxrandr libxi libxcursor libxkbcommon)
 optdepends=('xdg-desktop-portal: seletor nativo de arquivos (GNOME/KDE já trazem)')
 options=(!debug)
