@@ -57,7 +57,7 @@ md-5 = "0.10"
 # Atualização: craft_update (libs/craft-libs) — check no GitHub, prompt egui e
 # self-update (Windows: MSI/portable; Linux: AppImage/tar.gz). O `egui` liga o
 # prompt e o Updater de UI.
-craft-update = { path = "libs/craft-libs/crates/update", features = ["egui"] }
+craft-update = { path = "libs/craft-libs/crates/update", features = ["egui", "icons"] }
 # Seletor NATIVO de arquivo/pasta. Defaults do rfd 0.17 no Linux = backend
 # XDG portal (Rust puro via zbus, fallback Zenity) — mesmo padrão dos apps
 # maduros (local-pdf e irmãos); chamadas via AsyncFileDialog + thread worker
