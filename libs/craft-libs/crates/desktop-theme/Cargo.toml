@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# Vendored into each app, never published: the path dependency on craft-platform has no version
+# (cargo-deny `wildcards` rejects it on a publishable crate).
+publish = false
 description = "Makes egui's system theme answer on Linux, where winit reports none, from the XDG Settings portal"
 
 [dependencies]
