@@ -51,6 +51,9 @@ allow-git = []
 [advisories]
 yanked = "warn"
 ignore = [
+    # chrono unmaintained (sem vulnerabilidade): chega pelo craft-update da suíte (e por código do app/upstream).
+    # Trocar por jiff/std quando o craft-update migrar (backlog).
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; sem vulnerabilidade, migração para jiff/std no backlog" },
     # paste e proc-macro-error são unmaintained (sem vulnerabilidade). Chegam como
     # proc macros do derive de serde/egui em tempo de COMPILAÇÃO, não no binário.
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; proc macro em tempo de compilação" },
