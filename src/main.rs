@@ -103,6 +103,8 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             theme::apply(&cc.egui_ctx, cfg.theme);
+            // Linux: a escolha clara/escura do desktop, que o winit não informa.
+            craft_desktop_theme::follow(&cc.egui_ctx);
             let mut utils = app::UtilsApp::new(cfg);
             // Check de update no arranque: achou release nova, o prompt do
             // updater abre sozinho (craft_update::dialog).

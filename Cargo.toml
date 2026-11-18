@@ -58,6 +58,9 @@ md-5 = "0.10"
 # self-update (Windows: MSI/portable; Linux: AppImage/tar.gz). O `egui` liga o
 # prompt e o Updater de UI.
 craft-update = { path = "libs/craft-libs/crates/update", features = ["egui", "icons"] }
+# Linux: a escolha clara/escura do desktop chega ao `ctx.system_theme()` (o winit não informa lá);
+# fonte no local-libs, espelhada aqui pelo sync.ps1.
+craft-desktop-theme = { path = "libs/craft-libs/crates/desktop-theme" }
 # Seletor NATIVO de arquivo/pasta. Defaults do rfd 0.17 no Linux = backend
 # XDG portal (Rust puro via zbus, fallback Zenity) — mesmo padrão dos apps
 # maduros (local-pdf e irmãos); chamadas via AsyncFileDialog + thread worker

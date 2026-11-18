@@ -1127,6 +1127,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-desktop-theme"
+version = "0.1.0"
+dependencies = [
+ "craft-platform",
+ "egui",
+]
+
+[[package]]
 name = "craft-i18n"
 version = "0.1.0"
 dependencies = [
@@ -1146,6 +1154,18 @@ dependencies = [
  "unicode-bidi",
  "windows-registry",
  "writeable",
+]
+
+[[package]]
+name = "craft-platform"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-io",
+ "async-process",
+ "egui",
+ "futures-lite",
+ "zbus",
 ]
 
 [[package]]
@@ -3446,6 +3466,7 @@ version = "0.6.10"
 dependencies = [
  "ab_glyph",
  "clipboard-win",
+ "craft-desktop-theme",
  "craft-update",
  "eframe",
  "egui",
