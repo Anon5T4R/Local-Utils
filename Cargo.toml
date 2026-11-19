@@ -4,6 +4,11 @@ members = ["xtask", "utils-ui"]
 default-members = [".", "utils-ui"]
 exclude = ["libs"]
 
+[workspace.package]
+# Nada da suíte vai ao crates.io: dependência `path` sem versão numa crate publicável reprova o
+# `cargo-deny` (wildcards). Cada membro herda com `publish.workspace = true`.
+publish = false
+
 # Forks vendored (egui 6d518fc, winit a517b38) — receita no AGENTS.md do local-office.
 [patch.crates-io]
 ecolor = { path = "libs/egui/crates/ecolor/" }
@@ -31,7 +36,7 @@ name = "local-utils"
 version = "0.6.11"
 edition = "2021"
 license = "GPL-3.0-or-later"
-publish = false
+publish.workspace = true
 repository = "https://github.com/Anon5T4R/Local-Utils"
 description = "Utilitários do cotidiano 100% locais e offline — clipboard na bandeja + ferramentas leves"
 
