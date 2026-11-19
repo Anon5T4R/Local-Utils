@@ -35,7 +35,7 @@ rustls-rustcrypto = { path = "libs/rustls-rustcrypto" }
 name = "local-utils"
 version = "0.6.11"
 edition = "2021"
-license = "GPL-3.0-or-later"
+license = "MIT OR Apache-2.0"
 publish.workspace = true
 repository = "https://github.com/Anon5T4R/Local-Utils"
 description = "Utilitários do cotidiano 100% locais e offline — clipboard na bandeja + ferramentas leves"

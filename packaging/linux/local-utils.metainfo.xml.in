@@ -6,7 +6,7 @@
        ícone, nomes de asset do updater — continua flat "local-utils" (launchable abaixo). -->
   <id>com.local.localutils</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-or-later</project_license>
+  <project_license>MIT OR Apache-2.0</project_license>
   <name>Local Utils</name>
   <summary>Clipboard manager and everyday tools, fully offline</summary>
   <developer id="com.local.localutils">

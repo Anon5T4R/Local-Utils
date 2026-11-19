@@ -16,7 +16,7 @@
 //! local-image, que também não propaga metadado ao re-salvar).
 //!
 //! **JXL só como ORIGEM**: o `jxl-oxide` é decodificador (JXL como origem
-//! funciona). Não existe encoder JXL compatível com a nossa licença (GPL-3.0),
+//! funciona). Não existe encoder JXL compatível com a nossa licença (MIT OR Apache-2.0),
 //! então o destino não oferece JXL — e a aba diz o motivo na tela.
 
 use std::path::{Path, PathBuf};

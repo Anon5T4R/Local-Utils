@@ -48,4 +48,4 @@ cargo build --locked
 O `Cargo.lock` está commitado; `build.rs` embute o `icon.ico` no binário do
 Windows.
 
-Licença: GPL-3.0-or-later.
+Licença: MIT OR Apache-2.0 (`LICENSE-MIT` e `LICENSE-APACHE`).

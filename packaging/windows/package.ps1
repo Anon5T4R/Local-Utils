@@ -85,9 +85,8 @@ New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item (Join-Path $Bin 'local-utils.exe') $Stage
 
 # ---- MSI ---------------------------------------------------------------------------------------
-# The installer's welcome page shows the license. The repo carries no LICENSE
-# file (the crate declares GPL-3.0-or-later), so the RTF is a short notice
-# pointing at the full text, hard-wrapped for the dialog's width.
+# The installer's welcome page shows the license: the RTF is a short notice naming the license
+# (the full texts are LICENSE-MIT and LICENSE-APACHE, shipped with the package).
 function ConvertTo-RtfText([string] $Text) {
   $sb = [System.Text.StringBuilder]::new()
   foreach ($ch in $Text.ToCharArray()) {
@@ -100,7 +99,7 @@ function ConvertTo-RtfText([string] $Text) {
 }
 $LicenseRtf = Join-Path $Stage 'license.rtf'
 $rtf = '{\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0\fswiss\fcharset0 Tahoma;}}\viewkind4\uc1\pard\sa120\f0\fs16 ' +
-  ('\b Local Utils\b0\par\par ' + (ConvertTo-RtfText 'Local Utils is free software: a 100% local and offline everyday utilities app. Licensed under the GNU General Public License, version 3 or later (GPL-3.0-or-later), with no warranty. The full license text is at https://www.gnu.org/licenses/. Source: https://github.com/Anon5T4R/Local-Utils.')) +
+  ('\b Local Utils\b0\par\par ' + (ConvertTo-RtfText 'Local Utils is free software: a 100% local and offline everyday utilities app. Licensed under the MIT License or the Apache License 2.0, at your option (MIT OR Apache-2.0), with no warranty. The full license texts are the LICENSE-MIT and LICENSE-APACHE files shipped with the package. Source: https://github.com/Anon5T4R/Local-Utils.')) +
   "\par`r`n}`r`n"
 [System.IO.File]::WriteAllText($LicenseRtf, $rtf, [System.Text.Encoding]::ASCII)
 

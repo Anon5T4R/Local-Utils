@@ -15,7 +15,7 @@ priority: optional
 maintainer: ${LOCALUTILS_MAINTAINER}
 vendor: Local Utils contributors
 homepage: https://github.com/Anon5T4R/Local-Utils
-license: GPL-3.0-or-later
+license: MIT OR Apache-2.0
 description: |-
   Everyday tools that work 100% locally and offline.
   Clipboard manager with history, search and pins, plus screenshot, clock,
