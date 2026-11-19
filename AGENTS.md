@@ -36,7 +36,9 @@ telemetria, sem dependência de servidores de terceiros.
 ```
 cargo build --locked                       # debug
 cargo test --locked                        # testes
-cargo xtask version X.Y.Z                  # bump (Cargo.toml + lock)
+cargo xtask ci                             # o gate local: o mesmo que o CI (fmt, clippy, build, testes, cargo-deny,
+                                           # espelhos do local-libs)
+cargo xtask version set X.Y.Z              # bump (Cargo.toml + lock)
 cargo xtask check                          # confere as versões sincronizadas
 ```
 
