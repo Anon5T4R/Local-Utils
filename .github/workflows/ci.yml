@@ -24,6 +24,11 @@ jobs:
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      # O antivírus em tempo real escaneia cada .rlib/.o que o rustc grava: no runner efêmero só custa tempo.
+      - name: Defender sem varredura em tempo real (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -49,7 +54,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # Só a main grava o cache; branches e PRs leem o da main (não enchem a cota de 10 GB com caches
+      # de vida curta, que despejariam o cache bom).
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Formatação
         run: cargo fmt --check
       - name: Clippy
@@ -96,3 +105,13 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+
+  mirror:
+    name: Espelhos do local-libs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Crates espelhadas iguais a uma versão da fonte (erro se editadas, aviso se antigas)
+        run: bash scripts/check-mirror.sh
