@@ -188,6 +188,11 @@ impl PickerState {
     }
 
     /// O overlay do conta-gotas está aberto? (o app chama o `show_overlay`)
+    /// Abre o conta-gotas (o botão da aba e a paleta). Erro = nada abriu.
+    pub fn start_eyedropper(&self, ctx: &egui::Context) -> Result<(), String> {
+        self.hot.begin(ctx)
+    }
+
     pub fn eyedropping(&self) -> bool {
         self.hot.is_open()
     }
@@ -360,7 +365,7 @@ fn format_row(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, format: Fo
             out.cfg_changed = true;
         }
 
-        if kit::ghost(ui, "📋").on_hover_text(i18n::t(lang, Key::CopyValue)).clicked() {
+        if craft_icons::ui::button(ui, craft_icons::Icon::Copy, i18n::t(lang, Key::CopyValue)).clicked() {
             let text = state.text(format).to_string();
             let (changed, status) = copy_new_text(history, lang, &text);
             out.history_changed |= changed;

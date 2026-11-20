@@ -41,7 +41,7 @@
 	Nothing copied yet	Nada copiada todavía
 	Nothing found	Nada encontrado
 	{n} item	{n} elemento
-	Options	Opciones
+	Settings	Configuración
 	Start with Windows	Iniciar con Windows
 	Global hotkey	Atajo global
 	shortcut already in use	atajo en conflicto
@@ -215,3 +215,22 @@
 	avg	media
 	max	máx
 	Energy & system	Energía y sistema
+	Automatic	Automático
+	Theme: {mode}	Tema: {mode}
+	Search commands	Buscar comandos
+	Search commands ({shortcut})	Buscar comandos ({shortcut})
+	No command matches.	Ningún comando coincide.
+	Check for Updates…	Buscar actualizaciones…
+	About Local Utils	Acerca de Local Utils
+	version {version}	versión {version}
+	You are on the newest version.	Tienes la versión más reciente.
+	Exit	Salir
+	Help	Ayuda
+	Utilities	Utilidades
+	File	Archivo
+	Capture screen	Capturar la pantalla
+	Pick a color from the screen	Tomar un color de la pantalla
+	Add images to convert…	Añadir imágenes para convertir…
+	Export history…	Exportar historial…
+	Import history…	Importar historial…
+	Clear search	Borrar la búsqueda

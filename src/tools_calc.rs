@@ -590,7 +590,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut CalcState, texts: &mut Hi
                 row.label(egui::RichText::new(&line.value).strong().color(skin.text));
                 let mut copied = false;
                 row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if resp.hovered() && kit::ghost(ui, "⧉").on_hover_text(i18n::t(lang, Key::CopyValue)).clicked() {
+                    if resp.hovered() && craft_icons::ui::button(ui, craft_icons::Icon::Copy, i18n::t(lang, Key::CopyValue)).clicked() {
                         copied = true;
                     }
                 });

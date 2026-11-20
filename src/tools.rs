@@ -17,7 +17,7 @@ use crate::ui as kit;
 
 /// Sub-aba aberta dentro de Ferramentas.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum SubTab {
+pub(crate) enum SubTab {
     Clock,
     Calc,
     Units,
@@ -25,9 +25,9 @@ enum SubTab {
 }
 
 impl SubTab {
-    const ALL: [SubTab; 4] = [SubTab::Clock, SubTab::Calc, SubTab::Units, SubTab::Dev];
+    pub(crate) const ALL: [SubTab; 4] = [SubTab::Clock, SubTab::Calc, SubTab::Units, SubTab::Dev];
 
-    fn label_key(self) -> Key {
+    pub(crate) fn label_key(self) -> Key {
         match self {
             SubTab::Clock => Key::ToolsClock,
             SubTab::Calc => Key::CalcTab,
@@ -68,6 +68,11 @@ impl ToolsState {
     /// `sound_file` é o `.wav` do config (vazio = bipes do SO).
     pub fn tick(&mut self, lang: Lang, clock: &Clock, alarms: &[(String, String)], sound_file: &str) -> Option<String> {
         self.clock.tick(lang, clock, alarms, sound_file)
+    }
+
+    /// Abre uma sub-aba (a paleta de comandos).
+    pub(crate) fn select(&mut self, sub: SubTab) {
+        self.sub = sub;
     }
 
     /// O alarme está tocando? (o app corta na primeira interação)

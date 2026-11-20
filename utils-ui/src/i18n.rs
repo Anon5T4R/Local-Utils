@@ -530,6 +530,51 @@ const KEYS: &[Key] = &[
     Key::SysEnergy,
 ];
 
+/// Texto da casca (tema, Configurações, paleta, Sobre…) pela fonte em inglês, que é a chave do catálogo.
+/// Sem tradução no catálogo, sai o inglês.
+pub fn tr(lang: Lang, source: &'static str) -> &'static str {
+    let code = match lang {
+        Lang::Pt => "pt-br",
+        Lang::En => "en",
+        Lang::Es => "es",
+    };
+    let craft_lang = I18N.from_code(code).unwrap_or_else(|| I18N.from_code("en").expect("en é builtin"));
+    I18N.t(craft_lang, source)
+}
+
+/// [`tr`] com `{nome}` trocado pelos valores (`tr_fmt(lang, "version {version}", &[("version", "1.0")])`).
+pub fn tr_fmt(lang: Lang, source: &'static str, args: &[(&str, &str)]) -> String {
+    craft_i18n::fmt(tr(lang, source), args)
+}
+
+/// Os textos da casca: o teste confere que cada um tem tradução nos catálogos (um texto novo entra aqui).
+#[cfg(test)]
+const SHELL_TEXTS: &[&str] = &[
+    "Settings",
+    "Automatic",
+    "Light",
+    "Dark",
+    "Theme: {mode}",
+    "Search commands",
+    "Search commands ({shortcut})",
+    "No command matches.",
+    "Check for Updates…",
+    "About Local Utils",
+    "version {version}",
+    "You are on the newest version.",
+    "Exit",
+    "Help",
+    "Utilities",
+    "File",
+    "Capture screen",
+    "Pick a color from the screen",
+    "Add images to convert…",
+    "Export history…",
+    "Import history…",
+    "Close",
+    "Clear search",
+];
+
 pub fn t(lang: Lang, key: Key) -> &'static str {
     let code = match lang {
         Lang::Pt => "pt-br",
@@ -593,7 +638,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         Key::TsDate => "{d}/{month}",
         Key::QrTooLong => "Text too long for a QR code (~1000 characters)",
         Key::QrFailed => "Could not generate the QR code",
-        Key::Options => "Options",
+        Key::Options => "Settings",
         Key::Autostart => "Start with Windows",
         Key::HotkeyGlobal => "Global hotkey",
         Key::RegisterHotkey => "Register shortcut",
@@ -782,6 +827,16 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Texto novo da casca sem tradução em pt-br/es sairia em inglês sem aviso.
+    #[test]
+    fn textos_da_casca_estao_nos_catalogos() {
+        for lang in [Lang::Pt, Lang::Es] {
+            for source in SHELL_TEXTS {
+                assert_ne!(tr(lang, source), *source, "sem tradução em {lang:?}: {source}");
+            }
+        }
+    }
 
     /// Equivalente do "tsc força completude": toda chave tem tradução nos
     /// 3 idiomas (match exaustivo + não-vazio).

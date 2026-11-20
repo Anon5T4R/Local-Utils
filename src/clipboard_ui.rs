@@ -192,7 +192,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         state.search_focused = resp.has_focus();
         // "×" (U+00D7, presente nas fontes) limpa a busca; o "✕" (U+2715)
         // saía vazio no Ubuntu/Hack.
-        if !state.search.is_empty() && kit::ghost(ui, "×").clicked() {
+        if !state.search.is_empty() && kit::ghost(ui, "×").on_hover_text(i18n::tr(lang, "Clear search")).clicked() {
             state.search.clear();
         }
     });
@@ -223,7 +223,9 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     let ids = state.cache.ids.clone();
 
     let mut actions = Actions::default();
-    let modal_open = state.edit.is_some() || state.qr.is_some() || state.ocr.is_some() || state.confirm_clear;
+    let modal_open = state.edit.is_some() || state.qr.is_some() || state.ocr.is_some() || state.confirm_clear
+        // Configurações ou paleta por cima: o teclado é delas.
+        || ctx.memory(|m| m.top_modal_layer().is_some());
 
     // ── teclado ───────────────────────────────────────────────────────
     // Esc limpa a busca mesmo com o campo focado (no piloto Esc fechava a
@@ -465,7 +467,7 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
         if !(resp.hovered() || focused) {
             return;
         }
-        if kit::ghost_action(ui, "🗑").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
+        if craft_icons::ui::button(ui, craft_icons::Icon::Delete, i18n::t(lang, Key::Remove)).clicked() {
             actions.remove = Some(entry.id);
         }
         if let Some(text) = qr_source(entry) {

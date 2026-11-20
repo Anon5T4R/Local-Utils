@@ -102,6 +102,8 @@ fn main() -> eframe::Result<()> {
         app::APP_ID,
         options,
         Box::new(move |cc| {
+            // O carregador de SVG dos ícones da suíte (craft-icons).
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             theme::apply(&cc.egui_ctx, cfg.theme);
             // Linux: a escolha clara/escura do desktop, que o winit não informa.
             craft_desktop_theme::follow(&cc.egui_ctx);

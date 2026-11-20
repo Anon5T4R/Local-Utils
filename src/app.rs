@@ -6,12 +6,12 @@
 //! (`tools.rs`), Notas é o scratchpad (`tools_notes.rs`) e Sistema é o monitor
 //! de recursos (`system.rs`).
 
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
 use eframe::egui;
 use utils_ui::config::{self, Config};
 use utils_ui::i18n::{self, Key, Lang};
-use utils_ui::theme;
 
 use crate::autostart;
 use crate::capture::{self, Capture};
@@ -31,7 +31,10 @@ use crate::tools::{self, ToolsState};
 use crate::tools_notes::{self, NotesState};
 use crate::transfer;
 use crate::tray::{self, TrayCmd};
-use crate::ui as kit;
+
+mod shell;
+#[cfg(test)]
+mod ui_tests;
 
 pub const APP_ID: &str = "local-utils";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -39,12 +42,6 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Sem isso a última mensagem ficava presa pra sempre (QA viu o "Desafixado"
 /// sobrevivendo a várias ações depois).
 const STATUS_TTL_MS: u64 = 4_000;
-
-/// Arquivo do histórico de clipboard: mesma pasta da config do app
-/// (`%APPDATA%\local-utils` no Windows, `~/.config/local-utils` fora).
-fn history_path() -> std::path::PathBuf {
-    config::config_dir(APP_ID).join("history.json")
-}
 
 /// Aba aberta no painel central. Clipboard é a âncora (a home do app).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -60,9 +57,9 @@ pub enum Tab {
 
 impl Tab {
     /// Todas as abas, na ordem do roadmap.
-    const ALL: [Tab; 7] = [Tab::Clipboard, Tab::Screenshot, Tab::Sistema, Tab::Tools, Tab::Scratchpad, Tab::Cor, Tab::Converter];
+    pub(crate) const ALL: [Tab; 7] = [Tab::Clipboard, Tab::Screenshot, Tab::Sistema, Tab::Tools, Tab::Scratchpad, Tab::Cor, Tab::Converter];
 
-    fn label(self, lang: Lang) -> &'static str {
+    pub(crate) fn label(self, lang: Lang) -> &'static str {
         let key = match self {
             Tab::Clipboard => Key::TabClipboard,
             Tab::Screenshot => Key::TabScreenshot,
@@ -143,6 +140,13 @@ pub struct UtilsApp {
     /// Fechar de VERDADE (pedido do updater): sem isto o X só esconde.
     #[cfg(windows)]
     allow_close: bool,
+    /// Paleta de comandos da suíte (lupa e Ctrl+K), em `shell.rs`.
+    palette: craft_palette::Palette,
+    /// Pasta do config.json e do history.json (`%APPDATA%\local-utils` no Windows, `~/.config/local-utils`
+    /// fora); os testes de UI apontam para uma pasta temporária.
+    data_dir: PathBuf,
+    /// "Sair" da paleta: o quadro encerra DE VERDADE (o X só esconde na bandeja).
+    quit: bool,
 }
 
 impl UtilsApp {
@@ -151,7 +155,9 @@ impl UtilsApp {
         // estar velho se a chave Run foi mexida por fora.
         cfg.autostart_ok = autostart::enabled();
 
-        let mut history = history::load(&history_path());
+        let data_dir = config::config_dir(APP_ID);
+        let history_file = data_dir.join("history.json");
+        let mut history = history::load(&history_file);
 
         // O que já está no clipboard quando o app abre entra no histórico
         // também (o listener só vê cópias a partir do registro — sem isto o
@@ -159,7 +165,7 @@ impl UtilsApp {
         // pagou no primeiro QA visual).
         if let Some(entry) = clipboard::read_current() {
             history.push(entry);
-            if let Err(e) = history::save(&history_path(), &history) {
+            if let Err(e) = history::save(&history_file, &history) {
                 eprintln!("history: {e}");
             }
         }
@@ -189,6 +195,29 @@ impl UtilsApp {
         });
         let hotkey_rx = hotkey::spawn(cfg.hotkey.clone(), cfg.hotkey_screenshot.clone());
 
+        Self::assemble(
+            cfg,
+            data_dir,
+            history,
+            clip_rx,
+            #[cfg(windows)]
+            tray_icon,
+            tray_rx,
+            hotkey_rx,
+        )
+    }
+
+    /// Monta o app com as peças já prontas: `new` entra com as reais (monitor do clipboard, bandeja e atalho
+    /// global); os testes de UI entram com peças vazias, sem tocar no sistema.
+    fn assemble(
+        cfg: Config,
+        data_dir: PathBuf,
+        history: history::History,
+        clip_rx: Option<Receiver<ClipEvent>>,
+        #[cfg(windows)] tray_icon: Option<tray::Tray>,
+        tray_rx: Receiver<TrayCmd>,
+        hotkey_rx: Option<Receiver<HotkeyEvent>>,
+    ) -> Self {
         // Recentes da aba Cor: semeados do config ANTES de o `cfg` ir pro Self.
         let picker = PickerState::from_config(&cfg.recent_colors);
 
@@ -221,7 +250,20 @@ impl UtilsApp {
             convert: ConvertState::default(),
             #[cfg(windows)]
             allow_close: false,
+            palette: craft_palette::Palette::default(),
+            data_dir,
+            quit: false,
         }
+    }
+
+    /// Onde o config.json é gravado.
+    fn config_file(&self) -> PathBuf {
+        self.data_dir.join("config.json")
+    }
+
+    /// Onde o histórico de clipboard é gravado.
+    fn history_file(&self) -> PathBuf {
+        self.data_dir.join("history.json")
     }
 
     /// Publica uma mensagem no rodapé e carimba o instante dela: o status de
@@ -297,6 +339,12 @@ impl UtilsApp {
                 HotkeyEvent::Registered => {}
             }
         }
+    }
+
+    /// Abre o seletor de imagens do conversor (o botão da aba e a paleta): a fila entra quando a resposta chega.
+    fn ask_convert_files(&mut self, ctx: &egui::Context) {
+        let dialog = convert::files_dialog(self.cfg.lang);
+        let _ = self.pickers.ask(ctx, pickers::Ask::Files(dialog), Box::new(|app, paths| app.convert.enqueue(paths)));
     }
 
     /// Abre a captura de tela (atalho de captura): congela o desktop e sobe o
@@ -407,7 +455,7 @@ impl UtilsApp {
     /// drain do monitor e a aba Clipboard (pin/remover/editar) passam por aqui.
     /// Erro vira status no rodapé em vez de sumir.
     fn save_history(&mut self) {
-        if let Err(e) = history::save(&history_path(), &self.history) {
+        if let Err(e) = history::save(&self.history_file(), &self.history) {
             self.set_status(format!("⚠ {e}"));
         }
     }
@@ -416,7 +464,7 @@ impl UtilsApp {
     /// mudou em memória). Erro vira status no rodapé: um autosave que falha em
     /// silêncio perderia o texto do usuário.
     fn save_config(&mut self) {
-        if let Err(e) = config::save(APP_ID, &self.cfg) {
+        if let Err(e) = config::save_to(&self.config_file(), &self.cfg) {
             self.set_status(format!("⚠ {e}"));
         }
     }
@@ -427,18 +475,6 @@ impl UtilsApp {
         self.updater.check_at_start(ctx);
     }
 
-    /// Verifica atualizações agora (o ↻ da barra de topo; o tooltip diz o que
-    /// ele faz). O resultado sai na barra de status do rodapé; release nova
-    /// abre o prompt do próprio updater.
-    fn check_updates(&mut self, ctx: &egui::Context) {
-        self.updater.check_now(ctx);
-    }
-
-    /// Abre o diálogo de opções com os rascunhos semeados do config atual.
-    fn open_options(&mut self) {
-        self.options.open(&self.cfg);
-    }
-
     /// Aplica o que o diálogo de opções devolveu: autostart (na hora), config
     /// (no Salvar) e export/import do histórico.
     fn apply_options(&mut self, ctx: &egui::Context, opts: options::Outcome) {
@@ -446,7 +482,7 @@ impl UtilsApp {
             match autostart::set(on) {
                 Ok(()) => {
                     self.cfg.autostart_ok = on;
-                    if let Err(e) = config::save(APP_ID, &self.cfg) {
+                    if let Err(e) = config::save_to(&self.config_file(), &self.cfg) {
                         eprintln!("config: {e}");
                     }
                 }
@@ -458,7 +494,7 @@ impl UtilsApp {
             self.cfg.hotkey = hotkey_spec;
             self.cfg.exclude = exclude;
             self.cfg.alarm_sound = alarm_sound;
-            match config::save(APP_ID, &self.cfg) {
+            match config::save_to(&self.config_file(), &self.cfg) {
                 // Atalho e exclusões são lidos na subida (registro do atalho e
                 // monitor do clipboard): avisa em vez de fingir que já valeu.
                 Ok(()) => self.set_status(i18n::t(self.cfg.lang, Key::RestartApplies).to_string()),
@@ -468,7 +504,7 @@ impl UtilsApp {
         // Popup no cursor vale NA HORA (nada do SO é relido): só persiste.
         if let Some(on) = opts.popup_mode {
             self.cfg.popup_instead_of_window = on;
-            if let Err(e) = config::save(APP_ID, &self.cfg) {
+            if let Err(e) = config::save_to(&self.config_file(), &self.cfg) {
                 eprintln!("config: {e}");
             }
         }
@@ -519,7 +555,17 @@ impl UtilsApp {
 
 impl eframe::App for UtilsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame(ui);
+    }
+}
+
+impl UtilsApp {
+    /// Um quadro da interface: o `eframe::App::ui` e os testes de UI (`ui_tests.rs`) chamam isto.
+    fn frame(&mut self, ui: &mut egui::Ui) {
         let ctx = &ui.ctx().clone();
+        if self.quit {
+            self.quit_for_real(ctx);
+        }
 
         // Janela residente na bandeja: o X ESCONDE em vez de sair. Exceções: o
         // updater pediu fechamento de verdade (`allow_close`) ou não há
@@ -618,6 +664,8 @@ impl eframe::App for UtilsApp {
             (picked.then)(self, picked.paths);
         }
         match self.updater.status().clone() {
+            // Com as Configurações abertas o resultado aparece nelas (shell.rs), não num modal à parte.
+            _ if self.options.is_open() => {}
             craft_update::updater::Status::UpToDate => {
                 self.update_note = Some(format!("{} ({})", i18n::t(self.cfg.lang, Key::UpToDate), CURRENT_VERSION));
                 self.updater.dismiss_status();
@@ -632,32 +680,28 @@ impl eframe::App for UtilsApp {
         // ficava preso no rodapé até a próxima mensagem).
         self.expire_status(ctx);
 
+        // Ctrl+K abre a paleta (o Utils não dá outro uso ao atalho). Não com a captura do atalho global ligada
+        // nas Configurações: ali o Ctrl+K é a combinação que o usuário está registrando.
+        if !self.options.is_capturing() && craft_palette::Palette::shortcut_pressed(ctx) {
+            self.palette.toggle();
+        }
+        // A paleta vem ANTES dos painéis: ela consome setas, Enter e Esc primeiro, e a lista do Clipboard (Enter
+        // recopia, Del remove) fica quieta enquanto ela está aberta.
+        self.palette_ui(ctx);
+        // As Configurações (engrenagem) também antes dos painéis: o Esc e as setas são delas, não da lista do
+        // Clipboard. Ficam por cima do painel central e abaixo do prompt de update (a ordem de camadas é do egui).
+        // O app aplica o que o diálogo devolveu.
+        self.settings_modal(ctx);
+
         // Barra de topo: a titlebar do SO já mostra "Local Utils" — aqui ficam
-        // só as ações da direita (⚙ opções, ↻ updates e os combos de
-        // idioma/tema), numa faixa mais baixa que o padrão do painel.
+        // só os botões da suíte à direita (engrenagem das Configurações, tema e
+        // a lupa da paleta), numa faixa mais baixa que o padrão do painel.
         let topo_frame = egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::symmetric(10, 3));
         egui::containers::Panel::top("topo").frame(topo_frame).show(ui, |ui| {
-            // Direita→esquerda: a PRIMEIRA coisa adicionada encosta na borda
-            // direita. Engrenagem e ↻ são ícones ghost (mesmo tamanho do kit);
-            // os combos de configuração vêm depois, à esquerda deles.
+            // Direita→esquerda: a PRIMEIRA coisa adicionada encosta na borda direita.
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Engrenagem: opções do app (autostart, atalho, exclusões,
-                    // export/import).
-                    if kit::ghost(ui, "⚙").on_hover_text(i18n::t(self.cfg.lang, Key::Options)).clicked() {
-                        self.open_options();
-                    }
-                    // ↻ ghost: o check de update é ação secundária e o texto longo
-                    // ("Verificar atualizações") pesava na faixa — o tooltip diz o
-                    // que o ícone faz.
-                    if kit::ghost(ui, "↻").on_hover_text(i18n::t(self.cfg.lang, Key::CheckUpdates)).clicked() {
-                        self.check_updates(ctx);
-                    }
-                    let (cfg_changed, _) = utils_ui::settings_ui(ui, &mut self.cfg, false);
-                    if cfg_changed {
-                        theme::apply(ctx, self.cfg.theme);
-                        let _ = config::save(APP_ID, &self.cfg);
-                    }
+                    self.shell_buttons(ui);
                 });
             });
         });
@@ -803,8 +847,7 @@ impl eframe::App for UtilsApp {
         // "Selecionar arquivos" do conversor: idem — a fila entra quando a
         // resposta chega (o drop na janela continua sendo o caminho direto).
         if convert_pick {
-            let dialog = convert::files_dialog(self.cfg.lang);
-            let _ = self.pickers.ask(ctx, pickers::Ask::Files(dialog), Box::new(|app, paths| app.convert.enqueue(paths)));
+            self.ask_convert_files(ctx);
         }
         // Ferramentas: o "copiar" de um resultado cria entrada Text nova no
         // histórico de clipboard; os alarmes editados vão pro config.
@@ -887,11 +930,6 @@ impl eframe::App for UtilsApp {
             self.tab = Tab::Cor;
             ctx.request_repaint();
         }
-
-        // Opções (engrenagem): por cima do painel central e abaixo do prompt de
-        // update. O app aplica o que o diálogo devolveu.
-        let opts = options::show(ctx, self.cfg.lang, &mut self.options);
-        self.apply_options(ctx, opts);
 
         // Nota do check manual (Atualizado ✓ / falha): modal simples com OK.
         if let Some(note) = self.update_note.clone() {
