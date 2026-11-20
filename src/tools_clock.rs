@@ -16,7 +16,7 @@
 use crate::i18n::tr;
 
 use crate::alarm_sound::AlarmSound;
-use crate::clipboard_ui::{civil_parts, Clock};
+use crate::clipboard_ui::{Clock, civil_parts};
 use crate::history::now_ms;
 use crate::ui::{self as kit, Skin};
 
@@ -336,11 +336,8 @@ impl ClockState {
                 continue;
             }
             self.fired.push((time.clone(), now_minute));
-            let message = if label.is_empty() {
-                format!("⏰ {}", tr("Alarms"))
-            } else {
-                format!("⏰ {}", tr("alarm: {label}").replace("{label}", label))
-            };
+            let message =
+                if label.is_empty() { format!("⏰ {}", tr("Alarms")) } else { format!("⏰ {}", tr("alarm: {label}").replace("{label}", label)) };
             // Toque do alarme: `.wav` do usuário em loop ou as 3 batidas do SO.
             self.sound.start(sound_file, now);
             self.flash = Some((message.clone(), now));
@@ -392,11 +389,7 @@ impl ClockState {
         }
         let (_, since) = self.flash.as_ref()?;
         // Mesma paridade de meio segundo do aviso dentro do painel.
-        if (now_ms().saturating_sub(*since) / BLINK_MS).is_multiple_of(2) {
-            Some("⏰".to_string())
-        } else {
-            None
-        }
+        if (now_ms().saturating_sub(*since) / BLINK_MS).is_multiple_of(2) { Some("⏰".to_string()) } else { None }
     }
 }
 
@@ -842,11 +835,7 @@ pub fn fmt_clock(ms: u64) -> String {
     let hours = total / 3_600;
     let minutes = (total % 3_600) / 60;
     let seconds = total % 60;
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
-    } else {
-        format!("{minutes}:{seconds:02}")
-    }
+    if hours > 0 { format!("{hours}:{minutes:02}:{seconds:02}") } else { format!("{minutes}:{seconds:02}") }
 }
 
 /// Segundos → `hh:mm:ss` (o formato que o campo do timer aceita — os presets

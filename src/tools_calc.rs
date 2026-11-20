@@ -603,13 +603,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut CalcState, texts: &mut History) -> Ou
                 }
             }
         });
-        if let Some(index) = reinsert {
-            if let Some(line) = state.history.get(index) {
+        if let Some(index) = reinsert
+            && let Some(line) = state.history.get(index) {
                 state.expr = line.expr.clone();
                 state.result = Some(line.value.clone());
                 state.error = None;
             }
-        }
         if let Some(value) = copy {
             let (changed, status) = copy_new_text(texts, &value);
             out.history_changed |= changed;

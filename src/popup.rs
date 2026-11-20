@@ -20,9 +20,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use eframe::egui;
 use crate::i18n::tr;
 use crate::workarea;
+use eframe::egui;
 
 use crate::clipboard_ui::{self, Clock};
 use crate::history::{Entry, History, Kind};
@@ -295,13 +295,12 @@ fn draw(ui: &mut egui::Ui, state: &Arc<Mutex<State>>) {
             st.focus = Some(st.focus.unwrap_or(0).saturating_sub(1));
             st.scroll_to = st.focus;
         }
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
-            if let Some(row) = st.focus.and_then(|i| hits.get(i)).and_then(|i| st.rows.get(*i)) {
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+            && let Some(row) = st.focus.and_then(|i| hits.get(i)).and_then(|i| st.rows.get(*i)) {
                 let id = row.id;
                 st.close_with(&ctx, Some(Cmd::Paste(id)));
                 return;
             }
-        }
     }
 
     let skin = Skin::of(ui);
@@ -316,9 +315,7 @@ fn draw(ui: &mut egui::Ui, state: &Arc<Mutex<State>>) {
             // O botão de fechar reserva a largura ANTES do campo: com
             // `desired_width(INFINITY)` o campo comia a linha inteira e o botão
             // saía pela borda direita.
-            let field = ui.add(
-                kit::line(&mut st.search).hint_text(tr("Search")).desired_width((ui.available_width() - CLOSE_BTN - 8.0).max(120.0)),
-            );
+            let field = ui.add(kit::line(&mut st.search).hint_text(tr("Search")).desired_width((ui.available_width() - CLOSE_BTN - 8.0).max(120.0)));
             if !st.focus_requested {
                 field.request_focus();
                 st.focus_requested = true;

@@ -59,11 +59,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NotesState, text: &mut String) {
     // forma plural ainda).
     let chars = text.chars().count();
     let lines = text.lines().count();
-    let counts = format!(
-        "{} · {}",
-        tr("{n} characters").replace("{n}", &chars.to_string()),
-        tr("{n} lines").replace("{n}", &lines.to_string())
-    );
+    let counts = format!("{} · {}", tr("{n} characters").replace("{n}", &chars.to_string()), tr("{n} lines").replace("{n}", &lines.to_string()));
     ui.label(egui::RichText::new(counts).small().weak());
 }
 

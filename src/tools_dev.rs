@@ -8,11 +8,11 @@
 //! SO aqui de propósito: id de correlação, não segredo); e a data civil reusa o
 //! `civil_from_days` do Hinnant que a lista de clipboard já usa.
 
+use crate::i18n::tr;
 use md5::Md5;
 use sha2::{Digest, Sha256};
-use crate::i18n::tr;
 
-use crate::clipboard_ui::{civil_parts, copy_new_text, Clock};
+use crate::clipboard_ui::{Clock, civil_parts, copy_new_text};
 use crate::history::History;
 use crate::ui as kit;
 

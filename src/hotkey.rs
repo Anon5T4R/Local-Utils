@@ -60,15 +60,15 @@ pub fn win_down() -> bool {
 
 #[cfg(windows)]
 mod imp {
-    use std::sync::mpsc::{channel, Receiver, Sender};
     use std::sync::Mutex;
+    use std::sync::mpsc::{Receiver, Sender, channel};
 
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 
     use super::HotkeyEvent;
-    use crate::winctl;
     use crate::prefs::{DEFAULT_HOTKEY, DEFAULT_HOTKEY_SCREENSHOT};
+    use crate::winctl;
 
     pub fn spawn(primary: String, secondary: String) -> Option<Receiver<HotkeyEvent>> {
         let (tx, rx) = channel();

@@ -64,16 +64,16 @@ mod imp {
 
     use std::sync::mpsc::Sender;
 
-    use clipboard_win::{formats, Clipboard};
-    use windows::core::{PCWSTR, PWSTR};
+    use clipboard_win::{Clipboard, formats};
     use windows::Win32::Foundation::{CloseHandle, HINSTANCE};
     use windows::Win32::System::DataExchange::{AddClipboardFormatListener, GetClipboardSequenceNumber};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW};
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId, RegisterClassW, HWND_MESSAGE,
-        MSG, WINDOW_EX_STYLE, WM_CLIPBOARDUPDATE, WNDCLASSW, WS_OVERLAPPED,
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId, HWND_MESSAGE, MSG,
+        RegisterClassW, WINDOW_EX_STYLE, WM_CLIPBOARDUPDATE, WNDCLASSW, WS_OVERLAPPED,
     };
+    use windows::core::{PCWSTR, PWSTR};
 
     use super::ClipEvent;
     use crate::history::{self, Entry, Kind};
@@ -92,7 +92,7 @@ mod imp {
         wparam: windows::Win32::Foundation::WPARAM,
         lparam: windows::Win32::Foundation::LPARAM,
     ) -> windows::Win32::Foundation::LRESULT {
-        DefWindowProcW(hwnd, msg, wparam, lparam)
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
     }
 
     /// UTF-16 com NUL final — o `PCWSTR` que as APIs pedem.
@@ -290,11 +290,7 @@ mod imp {
     /// CF_HDROP — caminhos copiados do Explorer.
     fn read_files() -> Option<Vec<String>> {
         let files = clipboard_win::get::<Vec<String>, _>(formats::FileList).ok()?;
-        if files.is_empty() {
-            None
-        } else {
-            Some(files)
-        }
+        if files.is_empty() { None } else { Some(files) }
     }
 
     /// CF_HTML — o getter do clipboard-win já devolve só o FRAGMENTO (tira o
@@ -302,11 +298,7 @@ mod imp {
     fn read_html() -> Option<String> {
         let format = formats::Html::new()?;
         let html = clipboard_win::get::<String, _>(format).ok()?;
-        if html.trim().is_empty() {
-            None
-        } else {
-            Some(html)
-        }
+        if html.trim().is_empty() { None } else { Some(html) }
     }
 
     /// "Rich Text Format" — formato registrado, sem getter próprio na crate:
@@ -329,11 +321,7 @@ mod imp {
     /// CF_UNICODETEXT.
     fn read_text() -> Option<String> {
         let text = clipboard_win::get::<String, _>(formats::Unicode).ok()?;
-        if text.is_empty() {
-            None
-        } else {
-            Some(text)
-        }
+        if text.is_empty() { None } else { Some(text) }
     }
 
     // Chamado pela aba Clipboard (botão/Enter de recopiar).

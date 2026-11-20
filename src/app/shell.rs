@@ -6,7 +6,7 @@ use craft_palette::Command;
 use craft_update::updater::Status;
 use egui::{Key, KeyboardShortcut, Modifiers};
 
-use super::{options, Tab, UtilsApp};
+use super::{Tab, UtilsApp, options};
 use crate::i18n::{self, tr, tr_fmt};
 use crate::theme;
 use crate::tools::SubTab;
@@ -227,12 +227,11 @@ impl UtilsApp {
                     if let Some(tab) = Tab::ALL.into_iter().find(|t| tab_id(*t) == name) {
                         self.tab = tab;
                     }
-                } else if let Some(name) = id.strip_prefix("tools.") {
-                    if let Some(sub) = SubTab::ALL.into_iter().find(|s| sub_id(*s) == name) {
+                } else if let Some(name) = id.strip_prefix("tools.")
+                    && let Some(sub) = SubTab::ALL.into_iter().find(|s| sub_id(*s) == name) {
                         self.tab = Tab::Tools;
                         self.tools.select(sub);
                     }
-                }
             }
         }
         ctx.request_repaint();

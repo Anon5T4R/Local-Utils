@@ -294,12 +294,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UnitsState, texts: &mut History) -> O
                     });
                     // Linha de referência ("1 ft = 30.48 cm"): o par de unidades
                     // em corpo pequeno, para conferir a escala sem converter.
-                    if let (Some(from), Some(to)) = (state.origin_id(), state.target_id()) {
-                        if let Some(unit_value) = convert(state.cat, 1.0, from, to) {
+                    if let (Some(from), Some(to)) = (state.origin_id(), state.target_id())
+                        && let Some(unit_value) = convert(state.cat, 1.0, from, to) {
                             ui.add_space(4.0);
                             ui.label(egui::RichText::new(format!("1 {from} = {} {to}", fmt_value(unit_value))).small().color(skin.muted));
                         }
-                    }
                 }
                 Err(key) => {
                     ui.label(egui::RichText::new(format!("⚠ {}", key)).color(skin.danger));

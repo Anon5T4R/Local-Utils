@@ -123,9 +123,9 @@ fn main() -> eframe::Result<()> {
 pub(crate) fn open_url(url: &str) {
     #[cfg(windows)]
     {
-        use windows::core::{HSTRING, PCWSTR};
         use windows::Win32::UI::Shell::ShellExecuteW;
         use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        use windows::core::{HSTRING, PCWSTR};
         let verb = HSTRING::from("open");
         let file = HSTRING::from(url);
         // > 32 = lançou.

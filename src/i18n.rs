@@ -138,8 +138,24 @@ mod tests {
     fn untranslated_on_purpose(code: &str, text: &str) -> bool {
         let everywhere = matches!(
             text,
-            "OCR" | "QR" | "Hex" | "RGB" | "HSL" | "CPU" | "Swap" | "UUID v4" | "Base64" | "HTML" | "RTF" | "URL" | "Hash" | "Pomodoro" | "Local Utils"
-                | "+{n} min" | "{h}:{mm}" | "{d}/{month}"
+            "OCR"
+                | "QR"
+                | "Hex"
+                | "RGB"
+                | "HSL"
+                | "CPU"
+                | "Swap"
+                | "UUID v4"
+                | "Base64"
+                | "HTML"
+                | "RTF"
+                | "URL"
+                | "Hash"
+                | "Pomodoro"
+                | "Local Utils"
+                | "+{n} min"
+                | "{h}:{mm}"
+                | "{d}/{month}"
         );
         everywhere || (code == "es" && text == "Color") || (code == "pt-br" && text == "{n} item")
     }

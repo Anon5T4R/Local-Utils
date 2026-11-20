@@ -29,9 +29,9 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::i18n::tr;
 use eframe::egui;
 use image::RgbaImage;
-use crate::i18n::tr;
 
 /// Título PRÓPRIO de propósito: `winctl::discover` acha a janela principal pelo
 /// título exato ("Local Utils") — o overlay não pode se passar por ela.

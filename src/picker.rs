@@ -15,8 +15,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use eframe::egui;
 use crate::i18n::tr;
+use eframe::egui;
 
 use crate::capture::{self, Frozen};
 use crate::clipboard_ui::copy_new_text;
@@ -289,11 +289,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut PickerState, history: &mut History) -
         ui.vertical(|ui| {
             ui.label(egui::RichText::new(hex_text(state.current)).size(22.0).strong().color(skin.text));
             ui.add_space(8.0);
-            if kit::pill(ui, tr("Capture from screen"), true).clicked() {
-                if let Err(e) = state.hot.begin(ui.ctx()) {
+            if kit::pill(ui, tr("Capture from screen"), true).clicked()
+                && let Err(e) = state.hot.begin(ui.ctx()) {
                     out.status = Some(format!("⚠ {}: {e}", tr("Could not capture the screen")));
                 }
-            }
         });
     });
     ui.add_space(12.0);

@@ -19,9 +19,9 @@
 
 use std::path::Path;
 
-use eframe::egui;
-use image::{imageops, RgbaImage};
 use crate::i18n::tr;
+use eframe::egui;
+use image::{RgbaImage, imageops};
 
 // `ascent`, `h_advance`, `glyph_id` e `outline_glyph` são métodos de TRAIT.
 use ab_glyph::{Font, ScaleFont};
@@ -471,14 +471,12 @@ pub fn show(ui: &mut egui::Ui, hotkey: &str, shot: Option<&mut Shot>) -> Outcome
     // Del apaga a anotação selecionada. Só há seleção na ferramenta Select,
     // que não mostra campo de texto: a tecla não é roubada de ninguém. Com um
     // arraste em andamento o índice do `selected` dançaria — ignora.
-    if shot.tool == Tool::Select && shot.moving.is_none() {
-        if let Some(idx) = shot.selected {
-            if ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)) && shot.edits.remove(idx) {
+    if shot.tool == Tool::Select && shot.moving.is_none()
+        && let Some(idx) = shot.selected
+            && ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)) && shot.edits.remove(idx) {
                 shot.selected = None;
                 shot.dirty = true;
             }
-        }
-    }
 
     toolbar(ui, shot, &mut out);
     // Descartou: nada de canvas neste frame — o app limpa a captura no fim do
@@ -677,11 +675,7 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
         Tool::Select if shot.moving.is_some() => egui::CursorIcon::Grabbing,
         Tool::Select => {
             let sobre = resp.hover_pos().map(to_img).and_then(|p| shot.edits.hit_test(p, hit_tol(scale)));
-            if sobre.is_some() {
-                egui::CursorIcon::Move
-            } else {
-                egui::CursorIcon::Grab
-            }
+            if sobre.is_some() { egui::CursorIcon::Move } else { egui::CursorIcon::Grab }
         }
         Tool::Text => egui::CursorIcon::Text,
         _ => egui::CursorIcon::Crosshair,
@@ -804,8 +798,8 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
     }
 
     // Seleção: contorno tracejado fino em volta da anotação escolhida.
-    if shot.tool == Tool::Select {
-        if let Some(an) = shot.selected.and_then(|i| shot.edits.annotations().get(i)) {
+    if shot.tool == Tool::Select
+        && let Some(an) = shot.selected.and_then(|i| shot.edits.annotations().get(i)) {
             let (p0, p1) = an.bounds();
             let r = egui::Rect::from_two_pos(to_view(p0), to_view(p1));
             let stroke = egui::Stroke::new(1.0_f32, ui.visuals().selection.stroke.color);
@@ -813,7 +807,6 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
             // "Outside" a caixa é expandida meia espessura + 1 px de folga.
             dashed_outline(&painter, r.expand(stroke.width * 0.5 + 1.0), stroke);
         }
-    }
 }
 
 /// Tolerância do hit-test em px da IMAGEM: o alvo confortável de ~6 px de tela

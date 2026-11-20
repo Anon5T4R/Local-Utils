@@ -22,9 +22,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
+use crate::i18n::tr;
 use eframe::egui;
 use image::{DynamicImage, ExtendedColorType, ImageEncoder};
-use crate::i18n::tr;
 
 use crate::ui::{self as kit, Skin};
 
@@ -293,11 +293,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut ConvertState) -> Outcome {
         // Converter: rótulo da aba e do botão são a MESMA palavra no catálogo.
         let enabled = !state.running() && state.waiting() > 0;
         ui.add_enabled_ui(enabled, |ui| {
-            if kit::pill(ui, tr("Convert"), true).clicked() {
-                if let Err(e) = state.start() {
+            if kit::pill(ui, tr("Convert"), true).clicked()
+                && let Err(e) = state.start() {
                     out.status = Some(format!("⚠ {e}"));
                 }
-            }
         });
     });
 

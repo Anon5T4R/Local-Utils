@@ -9,9 +9,9 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use eframe::egui;
-use crate::prefs::{self, Prefs};
 use crate::i18n::tr;
+use crate::prefs::{self, Prefs};
+use eframe::egui;
 
 use crate::autostart;
 use crate::capture::{self, Capture};
@@ -60,7 +60,8 @@ impl Tab {
     pub(crate) const ALL: [Tab; 7] = [Tab::Clipboard, Tab::Screenshot, Tab::Sistema, Tab::Tools, Tab::Scratchpad, Tab::Cor, Tab::Converter];
 
     pub(crate) fn label(self) -> &'static str {
-        let key = match self {
+        
+        (match self {
             Tab::Clipboard => tr("Clipboard"),
             Tab::Screenshot => tr("Screenshot"),
             Tab::Sistema => tr("System"),
@@ -68,8 +69,7 @@ impl Tab {
             Tab::Scratchpad => tr("Scratchpad"),
             Tab::Cor => tr("Color"),
             Tab::Converter => tr("Convert"),
-        };
-        key
+        }) as _
     }
 }
 

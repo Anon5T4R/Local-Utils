@@ -25,9 +25,9 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+use crate::i18n::tr;
 use eframe::egui;
 use sysinfo::{Components, DiskKind, Disks, InterfaceOperationalState, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use crate::i18n::tr;
 
 use crate::ui as kit;
 use crate::ui::Skin;

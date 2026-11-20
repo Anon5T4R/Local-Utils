@@ -9,8 +9,8 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use eframe::egui;
 use crate::i18n::tr;
+use eframe::egui;
 
 use crate::clipboard;
 use crate::history::{Entry, History, Kind};
@@ -237,18 +237,16 @@ pub fn show(ui: &mut egui::Ui, history: &mut History, state: &mut ClipboardUiSta
     // mover a seleção da lista. (Botão com foco não conta: `search_focused` é
     // específico do campo de busca e dos diálogos, que bloqueiam acima.)
     if !modal_open && !state.search_focused {
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
-            if let Some((row, id)) = move_focus(history, &ids, state.focus, 1) {
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown))
+            && let Some((row, id)) = move_focus(history, &ids, state.focus, 1) {
                 state.focus = Some(id);
                 state.scroll_to = Some(row);
             }
-        }
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
-            if let Some((row, id)) = move_focus(history, &ids, state.focus, -1) {
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp))
+            && let Some((row, id)) = move_focus(history, &ids, state.focus, -1) {
                 state.focus = Some(id);
                 state.scroll_to = Some(row);
             }
-        }
         if state.focus.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
             actions.copy = state.focus;
         }
@@ -559,14 +557,14 @@ fn paint_thumb(ui: &egui::Ui, rect: egui::Rect, entry: &Entry, thumbs: &mut Thum
 /// Rótulo traduzido do tipo (linha de cima da entrada). Compartilhado com o
 /// popup rápido, que desenha a linha em versão slim.
 pub(crate) fn kind_label(kind: Kind) -> &'static str {
-    let key = match kind {
+    
+    (match kind {
         Kind::Text => tr("Plain text"),
         Kind::Html => tr("HTML"),
         Kind::Rtf => tr("RTF"),
         Kind::Image => tr("Image"),
         Kind::Files => tr("Copied files"),
-    };
-    key
+    }) as _
 }
 
 /// Nome de um caminho copiado (sem a pasta).

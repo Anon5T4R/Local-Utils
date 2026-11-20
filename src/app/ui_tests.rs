@@ -5,11 +5,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 
+use crate::prefs::Prefs;
 use craft_icons::ThemeMode;
 use egui::accesskit::Role;
-use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use crate::prefs::Prefs;
+use egui_kittest::kittest::Queryable;
 
 use super::{Tab, UtilsApp};
 use crate::history::History;

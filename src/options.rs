@@ -11,9 +11,9 @@
 //! que o parser do `hotkey.rs` entende (`win+alt+v`). O texto salvo continua
 //! sendo esse formato; a tela mostra a versão legível ao lado.
 
-use eframe::egui;
-use crate::prefs::{Prefs, DEFAULT_HOTKEY};
 use crate::i18n::tr;
+use crate::prefs::{DEFAULT_HOTKEY, Prefs};
+use eframe::egui;
 
 use crate::hotkey;
 use crate::ui as kit;
@@ -154,12 +154,7 @@ impl OptionsState {
 
 /// Desenha o diálogo (se aberto) e devolve o que aplicar. `general` (idioma e tema) entra no topo e `about`
 /// (versão, repositório, atualizações) no fim do corpo: são das Configurações da suíte e moram em `shell.rs`.
-pub fn show(
-    ctx: &egui::Context,
-    state: &mut OptionsState,
-    general: impl FnOnce(&mut egui::Ui),
-    about: impl FnOnce(&mut egui::Ui),
-) -> Outcome {
+pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(&mut egui::Ui), about: impl FnOnce(&mut egui::Ui)) -> Outcome {
     let mut out = Outcome::default();
     if !state.open {
         return out;

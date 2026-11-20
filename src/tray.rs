@@ -33,7 +33,7 @@ pub struct Labels {
 
 #[cfg(windows)]
 mod imp {
-    use std::sync::mpsc::{channel, Receiver};
+    use std::sync::mpsc::{Receiver, channel};
 
     use tray_icon::menu::{Menu, MenuEvent, MenuItem};
     use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -143,7 +143,7 @@ mod imp {
 
 #[cfg(not(windows))]
 mod imp {
-    use std::sync::mpsc::{channel, Receiver};
+    use std::sync::mpsc::{Receiver, channel};
 
     use super::{Labels, TrayCmd};
 
@@ -161,4 +161,4 @@ mod imp {
 #[cfg(not(windows))]
 pub use imp::spawn;
 #[cfg(windows)]
-pub use imp::{spawn, Tray};
+pub use imp::{Tray, spawn};

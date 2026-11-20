@@ -93,11 +93,7 @@ impl Skin {
 
 /// Tinta legível sobre `fill` (claro em fundo escuro e vice-versa).
 fn ink_on(fill: egui::Color32) -> egui::Color32 {
-    if luminance(fill) > 150.0 {
-        egui::Color32::BLACK
-    } else {
-        egui::Color32::WHITE
-    }
+    if luminance(fill) > 150.0 { egui::Color32::BLACK } else { egui::Color32::WHITE }
 }
 
 /// Luminância perceptual (0–255) — decide texto claro ou escuro sobre o fundo.
@@ -178,15 +174,7 @@ fn pill_colored(ui: &mut egui::Ui, label: &str, fill: egui::Color32, ink: egui::
     } else {
         fill.gamma_multiply(0.9)
     };
-    let fill = if outline {
-        if hovered {
-            skin.hover
-        } else {
-            egui::Color32::TRANSPARENT
-        }
-    } else {
-        fill
-    };
+    let fill = if outline { if hovered { skin.hover } else { egui::Color32::TRANSPARENT } } else { fill };
     let stroke = if outline { egui::Stroke::new(1.0_f32, skin.border) } else { egui::Stroke::NONE };
     ui.painter().rect(rect, egui::CornerRadius::same(14), fill, stroke, egui::StrokeKind::Inside);
     let pos = rect.center() - galley.size() / 2.0;
@@ -402,11 +390,7 @@ pub fn big(ui: &mut egui::Ui, label: &str, primary: bool, width: f32) -> egui::R
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     let hovered = resp.hovered() && enabled;
     let fill = if outline {
-        if hovered {
-            skin.hover
-        } else {
-            egui::Color32::TRANSPARENT
-        }
+        if hovered { skin.hover } else { egui::Color32::TRANSPARENT }
     } else if hovered {
         fill.gamma_multiply(1.12)
     } else {

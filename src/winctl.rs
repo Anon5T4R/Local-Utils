@@ -13,15 +13,15 @@
 
 #![cfg(windows)]
 
-use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicIsize, Ordering};
 
-use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, EnumWindows, GetMessageW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow, ShowWindow,
-    TranslateMessage, MSG, SW_HIDE, SW_SHOW,
+    DispatchMessageW, EnumWindows, GetMessageW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, MSG, SW_HIDE, SW_SHOW,
+    SetForegroundWindow, ShowWindow, TranslateMessage,
 };
+use windows::core::BOOL;
 
 /// Título exato da janela do eframe (o mesmo `with_title` do `main.rs`).
 const WINDOW_TITLE: &str = "Local Utils";
@@ -40,21 +40,23 @@ struct EnumCtx {
 }
 
 unsafe extern "system" fn enum_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let ctx = &mut *(lparam.0 as *mut EnumCtx);
-    let mut pid = 0u32;
-    let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
-    if pid == ctx.pid && IsWindowVisible(hwnd).as_bool() {
-        let mut buf = [0u16; 64];
-        let n = GetWindowTextW(hwnd, &mut buf);
-        let title = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
-        // A janela do eframe tem o título exato; o console do debug (build sem
-        // `windows_subsystem`) tem o caminho do exe — não bate.
-        if title == WINDOW_TITLE {
-            ctx.found = hwnd.0 as isize;
-            return BOOL(0); // para de enumerar
+    unsafe {
+        let ctx = &mut *(lparam.0 as *mut EnumCtx);
+        let mut pid = 0u32;
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == ctx.pid && IsWindowVisible(hwnd).as_bool() {
+            let mut buf = [0u16; 64];
+            let n = GetWindowTextW(hwnd, &mut buf);
+            let title = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
+            // A janela do eframe tem o título exato; o console do debug (build sem
+            // `windows_subsystem`) tem o caminho do exe — não bate.
+            if title == WINDOW_TITLE {
+                ctx.found = hwnd.0 as isize;
+                return BOOL(0); // para de enumerar
+            }
         }
+        BOOL(1)
     }
-    BOOL(1)
 }
 
 /// Descobre e cacheia o HWND (chamado a cada frame; depois do 1º é um load).
@@ -75,11 +77,7 @@ pub fn discover() {
 
 fn hwnd() -> Option<HWND> {
     let v = HWND_CACHE.load(Ordering::Relaxed);
-    if v != 0 {
-        Some(HWND(v as *mut core::ffi::c_void))
-    } else {
-        None
-    }
+    if v != 0 { Some(HWND(v as *mut core::ffi::c_void)) } else { None }
 }
 
 /// Mostra e traz pra frente. Acordar a janela oculta por aqui é o ponto: não

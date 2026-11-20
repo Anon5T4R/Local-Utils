@@ -111,11 +111,7 @@ fn cargo() -> Command {
 fn run(mut cmd: Command, what: &str) -> Result<(), String> {
     eprintln!("$ {what}");
     let status = cmd.status().map_err(|e| format!("{what}: falhou ao iniciar: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("{what}: saiu com {status}"))
-    }
+    if status.success() { Ok(()) } else { Err(format!("{what}: saiu com {status}")) }
 }
 
 /// Nomes dos pacotes do workspace (`cargo metadata --no-deps`), sem dependências: o objeto de um pacote é
@@ -129,11 +125,10 @@ fn workspace_packages() -> Result<Vec<String>, String> {
     let mut names = Vec::new();
     for (i, _) in json.match_indices("{\"name\":\"") {
         let rest = &json[i + 9..];
-        if let Some(end) = rest.find('"') {
-            if rest[end..].starts_with("\",\"version\":") {
+        if let Some(end) = rest.find('"')
+            && rest[end..].starts_with("\",\"version\":") {
                 names.push(rest[..end].to_string());
             }
-        }
     }
     if names.is_empty() {
         return Err("cargo metadata: o workspace não lista pacotes".into());

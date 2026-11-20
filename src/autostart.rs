@@ -21,8 +21,8 @@ pub fn set(on: bool) -> Result<(), String> {
 
 #[cfg(windows)]
 mod imp {
-    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
     use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
 
     /// Nome do valor na chave Run. Estável: é por ele que o app se acha (e se
     /// remove) depois.

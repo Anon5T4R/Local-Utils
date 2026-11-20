@@ -42,11 +42,10 @@ impl Ocr {
         if entry.kind != Kind::Image {
             return Err("a entrada não é uma imagem".into());
         }
-        if let Some((id, text)) = &self.cache {
-            if *id == entry.id {
+        if let Some((id, text)) = &self.cache
+            && *id == entry.id {
                 return Ok(Some(text.clone()));
             }
-        }
         // Uma leitura por vez: pedir de novo enquanto roda não empilha threads.
         if self.pending.is_some() {
             return Ok(None);
@@ -95,7 +94,7 @@ mod imp {
     use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
     use windows::Media::Ocr::OcrEngine;
     use windows::Storage::Streams::DataWriter;
-    use windows::Win32::System::WinRT::{RoInitialize, RO_INIT_MULTITHREADED};
+    use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize};
 
     /// Texto da imagem (PNG). Roda na thread dedicada do [`super::Ocr`].
     pub fn read(png: &[u8]) -> Result<String, String> {
