@@ -338,8 +338,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut ConvertState) -> Outcome {
                     let spacing = ui.spacing().item_spacing.x;
                     let (kind_w, combo_w, remove_w) = (64.0, 78.0, 24.0);
                     let name_w = (ui.available_width() - kind_w - combo_w - remove_w - 3.0 * spacing).max(60.0);
-                    ui.add_sized([name_w, 22.0], egui::Label::new(egui::RichText::new(item.label.as_str()).color(skin.text)).truncate())
-                        .on_hover_text(item.path.display().to_string());
+                    // À esquerda (o `add_sized` centraliza e o nome curto ficava deslocado).
+                    ui.allocate_ui_with_layout(egui::vec2(name_w, 22.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add(egui::Label::new(egui::RichText::new(item.label.as_str()).color(skin.text)).truncate())
+                            .on_hover_text(item.path.display().to_string());
+                    });
                     let kind = item.src.map_or_else(|| tr("not a supported image").to_string(), |src| src.label().to_string());
                     ui.add_sized([kind_w, 22.0], egui::Label::new(egui::RichText::new(kind).small().weak()).truncate());
 

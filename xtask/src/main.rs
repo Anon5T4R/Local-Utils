@@ -126,9 +126,10 @@ fn workspace_packages() -> Result<Vec<String>, String> {
     for (i, _) in json.match_indices("{\"name\":\"") {
         let rest = &json[i + 9..];
         if let Some(end) = rest.find('"')
-            && rest[end..].starts_with("\",\"version\":") {
-                names.push(rest[..end].to_string());
-            }
+            && rest[end..].starts_with("\",\"version\":")
+        {
+            names.push(rest[..end].to_string());
+        }
     }
     if names.is_empty() {
         return Err("cargo metadata: o workspace não lista pacotes".into());

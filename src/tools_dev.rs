@@ -428,7 +428,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut DevState, texts: &mut History) -> Out
             }
         });
         ui.add_space(4.0);
-        ui.add(kit::line(&mut state.epoch_in).hint_text(tr("Unix epoch (seconds)")).desired_width(f32::INFINITY)).accessible_name(tr("Unix epoch (seconds)"));
+        ui.add(kit::line(&mut state.epoch_in).hint_text(tr("Unix epoch (seconds)")).desired_width(f32::INFINITY))
+            .accessible_name(tr("Unix epoch (seconds)"));
         ui.horizontal(|ui| {
             if kit::pill(ui, tr("To ISO"), true).clicked() {
                 match state.epoch_in.trim().parse::<i64>() {

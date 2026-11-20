@@ -12,8 +12,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::{Tab, UtilsApp};
-use crate::tools::SubTab;
 use crate::history::History;
+use crate::tools::SubTab;
 
 /// A menor largura que a janela pode ter na prática (o app não fixa mínimo).
 const NARROW: f32 = 340.0;
@@ -532,6 +532,18 @@ fn review_shots() {
             click_bar(&mut harness, SEARCH);
             harness.run_steps(4);
             shot(&mut harness, &format!("palette-{name}-{label}"));
+        }
+    }
+    // A tela principal com conteúdo e cada diálogo, nas duas larguras e nos dois temas.
+    for (width, label) in [(NARROW, "340"), (1100.0, "1100")] {
+        for (mode, name) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
+            for (what, setup) in tab_setups().into_iter().chain(dialog_setups()) {
+                let mut app = loaded("shots-content", Prefs::new("en", mode));
+                setup(&mut app);
+                let mut harness = harness_sized(app, width);
+                harness.run_steps(4);
+                shot(&mut harness, &format!("{what}-{name}-{label}"));
+            }
         }
     }
 }

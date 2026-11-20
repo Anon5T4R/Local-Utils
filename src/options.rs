@@ -242,7 +242,8 @@ pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(
                 // usuário digitar nele não mexe no rascunho.
                 let mut shown = if state.capturing { tr("Press the new shortcut… (Esc cancels)").to_string() } else { state.hotkey.clone() };
                 let width = ui.available_width().min(200.0);
-                let field = ui.add_enabled(windows, kit::line(&mut shown).hint_text(DEFAULT_HOTKEY).desired_width(width)).labelled_by(hotkey_label.id);
+                let field =
+                    ui.add_enabled(windows, kit::line(&mut shown).hint_text(DEFAULT_HOTKEY).desired_width(width)).labelled_by(hotkey_label.id);
                 if state.capturing && !field.has_focus() {
                     // Foco é o que dá "no campo" à captura (o egui entrega as
                     // teclas pelo `Context`, não pelo widget).

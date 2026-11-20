@@ -220,6 +220,7 @@ pub struct ClockState {
 #[cfg(test)]
 impl ClockState {
     pub(crate) fn open_alarm(&mut self) {
+        self.mode = Mode::Alarms;
         self.alarm_open = true;
     }
 }
