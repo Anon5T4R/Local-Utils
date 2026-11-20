@@ -268,9 +268,11 @@ fn review_shots() {
             harness.run_steps(2);
             shot(&mut harness, &format!("bar-{name}-{label}"));
             click_bar(&mut harness, GEAR);
+            harness.run_steps(4);
             shot(&mut harness, &format!("settings-{name}-{label}"));
             press(&mut harness, egui::Key::Escape, egui::Modifiers::NONE);
             click_bar(&mut harness, SEARCH);
+            harness.run_steps(4);
             shot(&mut harness, &format!("palette-{name}-{label}"));
         }
     }
