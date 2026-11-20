@@ -1,0 +1,22 @@
+[package]
+name = "craft-palette"
+description = "The suite's command palette: one search box over the app's commands (Ctrl+K where free), the same in every app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# The suite's egui fork: the palette looks like the app it opens in.
+egui = { workspace = true }
+
+[dev-dependencies]
+# Typing, arrows and Enter in a real (headless) egui context.
+egui_kittest = { version = "0.37" }
+# The craft-libs workspace builds egui without fonts; the tests render text.
+egui = { workspace = true, features = ["default_fonts"] }

@@ -66,6 +66,12 @@ craft-update = { path = "libs/craft-libs/crates/update", features = ["egui", "ic
 # Linux: a escolha clara/escura do desktop chega ao `ctx.system_theme()` (o winit não informa lá);
 # fonte no local-libs, espelhada aqui pelo sync.ps1.
 craft-desktop-theme = { path = "libs/craft-libs/crates/desktop-theme" }
+# Os ícones dos conceitos comuns da suíte (tema, configurações, busca…) e o botão de tema; fonte: local-libs.
+craft-icons = { path = "libs/craft-libs/crates/icons", features = ["egui"] }
+# A paleta de comandos da suíte (lupa e Ctrl+K); fonte: local-libs.
+craft-palette = { path = "libs/craft-libs/crates/palette" }
+# Carregador de SVG dos ícones da suíte (resvg, Rust puro); fork vendored via [patch].
+egui_extras = { version = "0.37", default-features = false, features = ["svg"] }
 # Seletor NATIVO de arquivo/pasta. Defaults do rfd 0.17 no Linux = backend
 # XDG portal (Rust puro via zbus, fallback Zenity) — mesmo padrão dos apps
 # maduros (local-pdf e irmãos); chamadas via AsyncFileDialog + thread worker
@@ -98,6 +104,10 @@ jxl-oxide = { version = "0.12", features = ["image"] }
 # `default-features = false`: sobram só as quatro leituras que a aba usa —
 # "user" (conta do SO) e "multithread" (puxaria rayon) ficam fora do grafo.
 sysinfo = { version = "0.40", default-features = false, features = ["system", "disk", "network", "component"] }
+
+[dev-dependencies]
+# Testes de UI sem janela (egui_kittest): a barra, as Configurações e a paleta respondem a cliques e teclas.
+egui_kittest = { version = "0.37", default-features = false, features = ["wgpu"] }
 
 [target.'cfg(windows)'.dependencies]
 # Leitura/escrita do CONTEÚDO do clipboard (texto, HTML, RTF, arquivos e
