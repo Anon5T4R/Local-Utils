@@ -277,27 +277,29 @@ pub fn show(ui: &mut egui::Ui, state: &mut ConvertState) -> Outcome {
     drop_zone(ui);
     ui.add_space(8.0);
 
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         // Seletor nativo assíncrono (`src/pickers.rs`): o clique só PEDE o
         // diálogo — o app abre e enfileira na continuação, num frame posterior.
         if kit::pill(ui, tr("Select files"), true).clicked() {
             out.pick = true;
         }
         ui.add_space(8.0);
-        ui.label(tr("Quality"));
-        let mut quality = i32::from(state.quality);
-        if ui.add(egui::Slider::new(&mut quality, 1..=100).show_value(true)).on_hover_text(tr("Applies to JPEG; WebP is saved lossless")).changed() {
-            state.quality = quality.clamp(1, 100) as u8;
-        }
-        ui.add_space(8.0);
         // Converter: rótulo da aba e do botão são a MESMA palavra no catálogo.
         let enabled = !state.running() && state.waiting() > 0;
-        ui.add_enabled_ui(enabled, |ui| {
-            if kit::pill(ui, tr("Convert"), true).clicked()
-                && let Err(e) = state.start() {
-                    out.status = Some(format!("⚠ {e}"));
-                }
-        });
+        if kit::pill_if(ui, tr("Convert"), true, enabled).clicked()
+            && let Err(e) = state.start()
+        {
+            out.status = Some(format!("⚠ {e}"));
+        }
+    });
+    // A qualidade numa linha própria: o controle deslizante não quebra linha junto dos botões.
+    ui.horizontal(|ui| {
+        let quality_label = ui.label(tr("Quality"));
+        let mut quality = i32::from(state.quality);
+        let slider = ui.add(egui::Slider::new(&mut quality, 1..=100).show_value(true)).labelled_by(quality_label.id);
+        if slider.on_hover_text(tr("Applies to JPEG; WebP is saved lossless")).changed() {
+            state.quality = quality.clamp(1, 100) as u8;
+        }
     });
 
     // JXL só como origem (não há codificador compatível com a licença): o
@@ -329,36 +331,48 @@ pub fn show(ui: &mut egui::Ui, state: &mut ConvertState) -> Outcome {
     let mut remove: Option<usize> = None;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (index, item) in state.queue.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                ui.add_sized([260.0, 22.0], egui::Label::new(egui::RichText::new(item.label.as_str()).color(skin.text)).truncate())
-                    .on_hover_text(item.path.display().to_string());
-                let kind = item.src.map_or_else(|| tr("not a supported image").to_string(), |src| src.label().to_string());
-                ui.add_sized([64.0, 22.0], egui::Label::new(egui::RichText::new(kind).small().weak()).truncate());
+            // Duas linhas por arquivo: nome, tipo, formato e remover em cima; o estado embaixo. Cabe na janela
+            // estreita, e o nome (que já vem encurtado) ocupa o que sobra da linha.
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    let spacing = ui.spacing().item_spacing.x;
+                    let (kind_w, combo_w, remove_w) = (64.0, 78.0, 24.0);
+                    let name_w = (ui.available_width() - kind_w - combo_w - remove_w - 3.0 * spacing).max(60.0);
+                    ui.add_sized([name_w, 22.0], egui::Label::new(egui::RichText::new(item.label.as_str()).color(skin.text)).truncate())
+                        .on_hover_text(item.path.display().to_string());
+                    let kind = item.src.map_or_else(|| tr("not a supported image").to_string(), |src| src.label().to_string());
+                    ui.add_sized([kind_w, 22.0], egui::Label::new(egui::RichText::new(kind).small().weak()).truncate());
 
-                if item.src.is_some() {
-                    egui::ComboBox::from_id_salt(("convert-target", item.id)).selected_text(item.target.label()).width(78.0).show_ui(ui, |ui| {
-                        for target in Target::ALL {
-                            ui.selectable_value(&mut item.target, target, target.label());
-                        }
-                    });
-                } else {
-                    ui.add_space(78.0);
-                }
+                    if item.src.is_some() {
+                        egui::ComboBox::from_id_salt(("convert-target", item.id))
+                            .selected_text(item.target.label())
+                            .width(combo_w)
+                            .show_ui(ui, |ui| {
+                                for target in Target::ALL {
+                                    ui.selectable_value(&mut item.target, target, target.label());
+                                }
+                            })
+                            .response
+                            .accessible_name(tr("Format"));
+                    } else {
+                        ui.add_space(combo_w);
+                    }
+
+                    // "×" (U+00D7): o "✕" (U+2715) não existe nas fontes e saía vazio.
+                    if kit::ghost_action(ui, "×").on_hover_text(tr("Remove")).clicked() {
+                        remove = Some(index);
+                    }
+                });
 
                 let status = match &item.status {
                     Status::Waiting => (format!("⏳ {}", tr("waiting")), skin.muted),
                     Status::Unsupported => (format!("⚠ {}", tr("not a supported image")), skin.danger),
-                    Status::Done { name } => (format!("✓ {}", tr("saved as {name}").replace("{name}", name)), skin.text),
+                    Status::Done { name } => (tr("saved as {name}").replace("{name}", name), skin.text),
                     Status::Failed { error } => (format!("⚠ {}: {error}", tr("Could not convert")), skin.danger),
                 };
-                ui.add_sized([360.0, 22.0], egui::Label::new(egui::RichText::new(status.0.as_str()).small().color(status.1)).truncate())
-                    .on_hover_text(status.0.clone());
-
-                // "×" (U+00D7): o "✕" (U+2715) não existe nas fontes e saía vazio.
-                if kit::ghost_action(ui, "×").on_hover_text(tr("Remove")).clicked() {
-                    remove = Some(index);
-                }
+                ui.add(egui::Label::new(egui::RichText::new(status.0.as_str()).small().color(status.1)).truncate()).on_hover_text(status.0.clone());
             });
+            ui.add_space(4.0);
         }
     });
     // Remoção fora do laço: mexer na fila durante o `iter_mut` não compila.

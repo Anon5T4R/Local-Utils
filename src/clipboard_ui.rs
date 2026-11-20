@@ -128,6 +128,24 @@ impl ClipboardUiState {
     }
 }
 
+#[cfg(test)]
+impl ClipboardUiState {
+    /// Abre o diálogo de edição (os testes de largura montam cada diálogo sem clicar na lista).
+    pub(crate) fn open_edit(&mut self, id: u128, text: &str) {
+        self.edit = Some(EditDraft { id, text: text.to_string() });
+    }
+
+    /// Abre o diálogo do QR.
+    pub(crate) fn open_qr(&mut self, text: &str) {
+        self.qr = Some(text.to_string());
+    }
+
+    /// Abre a confirmação de limpar o histórico.
+    pub(crate) fn open_clear(&mut self) {
+        self.confirm_clear = true;
+    }
+}
+
 impl Default for ClipboardUiState {
     fn default() -> Self {
         Self {
@@ -188,7 +206,7 @@ pub fn show(ui: &mut egui::Ui, history: &mut History, state: &mut ClipboardUiSta
     ui.horizontal(|ui| {
         let clear_w = if state.search.is_empty() { 0.0 } else { 28.0 };
         let width = (ui.available_width() - clear_w).max(120.0);
-        let resp = ui.add(kit::line(&mut state.search).hint_text(tr("Search")).desired_width(width));
+        let resp = ui.add(kit::line(&mut state.search).hint_text(tr("Search")).desired_width(width)).accessible_name(tr("Search"));
         state.search_focused = resp.has_focus();
         // "×" (U+00D7, presente nas fontes) limpa a busca; o "✕" (U+2715)
         // saía vazio no Ubuntu/Hack.
@@ -199,7 +217,7 @@ pub fn show(ui: &mut egui::Ui, history: &mut History, state: &mut ClipboardUiSta
     ui.add_space(4.0);
 
     // ── filtro por tipo (pills) + "Limpar" ────────────────────────────
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for filter in KindFilter::ALL {
             if kit::pill(ui, filter.label(), state.filter == filter).clicked() {
                 state.filter = filter;
@@ -238,15 +256,17 @@ pub fn show(ui: &mut egui::Ui, history: &mut History, state: &mut ClipboardUiSta
     // específico do campo de busca e dos diálogos, que bloqueiam acima.)
     if !modal_open && !state.search_focused {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown))
-            && let Some((row, id)) = move_focus(history, &ids, state.focus, 1) {
-                state.focus = Some(id);
-                state.scroll_to = Some(row);
-            }
+            && let Some((row, id)) = move_focus(history, &ids, state.focus, 1)
+        {
+            state.focus = Some(id);
+            state.scroll_to = Some(row);
+        }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp))
-            && let Some((row, id)) = move_focus(history, &ids, state.focus, -1) {
-                state.focus = Some(id);
-                state.scroll_to = Some(row);
-            }
+            && let Some((row, id)) = move_focus(history, &ids, state.focus, -1)
+        {
+            state.focus = Some(id);
+            state.scroll_to = Some(row);
+        }
         if state.focus.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
             actions.copy = state.focus;
         }
@@ -307,7 +327,7 @@ pub fn show(ui: &mut egui::Ui, history: &mut History, state: &mut ClipboardUiSta
         history.toggle_pin(id);
         out.changed = true;
         let pinned = history.entries().iter().find(|e| e.id == id).is_some_and(|e| e.pinned);
-        out.status = Some((if pinned { tr("Pinned") } else { tr("Unpinned") }).to_string());
+        out.status = Some(if pinned { tr("Pinned") } else { tr("Unpinned") }.to_string());
     }
     // Só Texto edita: HTML/RTF são fragmentos com marcação, editá-los como
     // texto puro corromperia o formato.
@@ -348,7 +368,7 @@ pub fn show(ui: &mut egui::Ui, history: &mut History, state: &mut ClipboardUiSta
 fn recopy(history: &History, id: u128) -> Option<String> {
     let entry = history.entries().iter().find(|e| e.id == id)?;
     Some(match clipboard::write_back(entry) {
-        Ok(()) => tr("Copied ✓").to_string(),
+        Ok(()) => tr("Copied").to_string(),
         Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
     })
 }
@@ -372,7 +392,7 @@ pub(crate) fn copy_new_text(history: &mut History, text: &str) -> (bool, String)
     };
     history.push(entry.clone());
     let status = match clipboard::write_back(&entry) {
-        Ok(()) => tr("Copied ✓").to_string(),
+        Ok(()) => tr("Copied").to_string(),
         Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
     };
     (true, status)
@@ -557,14 +577,13 @@ fn paint_thumb(ui: &egui::Ui, rect: egui::Rect, entry: &Entry, thumbs: &mut Thum
 /// Rótulo traduzido do tipo (linha de cima da entrada). Compartilhado com o
 /// popup rápido, que desenha a linha em versão slim.
 pub(crate) fn kind_label(kind: Kind) -> &'static str {
-    
-    (match kind {
+    match kind {
         Kind::Text => tr("Plain text"),
         Kind::Html => tr("HTML"),
         Kind::Rtf => tr("RTF"),
         Kind::Image => tr("Image"),
         Kind::Files => tr("Copied files"),
-    }) as _
+    }
 }
 
 /// Nome de um caminho copiado (sem a pasta).
@@ -763,11 +782,11 @@ fn edit_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut H
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clip-edit")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
-        ui.set_width(440.0);
+        ui.set_width(kit::dialog_width(ctx, 440.0));
         ui.heading(tr("Edit"));
         ui.add_space(10.0);
         egui::ScrollArea::vertical().id_salt("clip-edit-scroll").max_height(320.0).show(ui, |ui| {
-            ui.add(kit::block(&mut draft.text).desired_width(400.0).desired_rows(10));
+            ui.add(kit::block(&mut draft.text).desired_width(f32::INFINITY).desired_rows(10)).accessible_name(tr("Edit"));
         });
         ui.add_space(12.0);
         ui.horizontal(|ui| {
@@ -797,7 +816,7 @@ fn qr_modal(ctx: &egui::Context, state: &mut ClipboardUiState) {
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clip-qr")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
-        ui.set_width(QR_SIZE + 40.0);
+        ui.set_width(kit::dialog_width(ctx, QR_SIZE + 40.0));
         ui.heading(tr("QR code"));
         ui.add_space(10.0);
         draw_qr(ui, &text);
@@ -827,14 +846,14 @@ fn ocr_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut Hi
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clip-ocr")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
-        ui.set_width(460.0);
+        ui.set_width(kit::dialog_width(ctx, 460.0));
         ui.heading(tr("OCR"));
         ui.add_space(10.0);
         egui::ScrollArea::vertical().id_salt("clip-ocr-scroll").max_height(320.0).show(ui, |ui| {
             // Read-only de verdade: o texto lido é resultado, não rascunho —
             // editar aqui não teria onde gravar.
             let mut text = dialog.text.clone();
-            ui.add(kit::block(&mut text).interactive(false).desired_width(420.0).desired_rows(12));
+            ui.add(kit::block(&mut text).interactive(false).desired_width(f32::INFINITY).desired_rows(12)).accessible_name(tr("OCR"));
         });
         ui.add_space(12.0);
         ui.horizontal(|ui| {
@@ -864,7 +883,7 @@ fn ocr_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut Hi
         history.push(entry.clone());
         out.changed = true;
         out.status = Some(match clipboard::write_back(&entry) {
-            Ok(()) => tr("Copied ✓").to_string(),
+            Ok(()) => tr("Copied").to_string(),
             Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
         });
     } else if !(cancel || resp.should_close()) {
@@ -882,7 +901,7 @@ fn clear_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut 
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clip-clear")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
-        ui.set_width(360.0);
+        ui.set_width(kit::dialog_width(ctx, 360.0));
         ui.heading(tr("Clear all"));
         ui.add_space(10.0);
         ui.label(tr("Pinned items are kept"));
@@ -913,7 +932,9 @@ fn clear_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut 
 /// Desenha a matriz do QR (preto sobre branco: as duas cores são do CÓDIGO, não
 /// do tema — o leitor precisa de contraste puro).
 fn draw_qr(ui: &mut egui::Ui, text: &str) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(QR_SIZE, QR_SIZE), egui::Sense::hover());
+    // O código encolhe junto com o diálogo na janela estreita.
+    let edge = QR_SIZE.min(ui.available_width());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(edge, edge), egui::Sense::hover());
     ui.painter().rect_filled(rect, egui::CornerRadius::same(6), egui::Color32::WHITE);
     let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else {
         let font = egui::TextStyle::Body.resolve(ui.style());

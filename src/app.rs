@@ -60,8 +60,7 @@ impl Tab {
     pub(crate) const ALL: [Tab; 7] = [Tab::Clipboard, Tab::Screenshot, Tab::Sistema, Tab::Tools, Tab::Scratchpad, Tab::Cor, Tab::Converter];
 
     pub(crate) fn label(self) -> &'static str {
-        
-        (match self {
+        match self {
             Tab::Clipboard => tr("Clipboard"),
             Tab::Screenshot => tr("Screenshot"),
             Tab::Sistema => tr("System"),
@@ -69,7 +68,7 @@ impl Tab {
             Tab::Scratchpad => tr("Scratchpad"),
             Tab::Cor => tr("Color"),
             Tab::Converter => tr("Convert"),
-        }) as _
+        }
     }
 }
 
@@ -643,7 +642,7 @@ impl UtilsApp {
         if self.notes.due(now) {
             self.save_config();
             self.notes.saved();
-            self.set_status(tr("saved ✓").to_string());
+            self.set_status(tr("saved").to_string());
         } else if self.notes.pending() {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
@@ -743,7 +742,7 @@ impl UtilsApp {
             // o "(0:00)" com o timer zerado e um ⏰ que pisca enquanto um aviso
             // do relógio está de pé — o alerta sobrevive à troca de aba.
             let badge = self.tools.tab_badge();
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 for tab in Tab::ALL {
                     let label = match (&badge, tab) {
                         (Some(badge), Tab::Tools) => format!("{} {badge}", tab.label()),
@@ -934,9 +933,9 @@ impl UtilsApp {
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .default_width(340.0)
+                .default_width(crate::ui::dialog_width(ctx, 340.0))
                 .show(ctx, |ui| {
-                    ui.set_width(340.0);
+                    ui.set_width(crate::ui::dialog_width(ctx, 340.0));
                     ui.label(&note);
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {

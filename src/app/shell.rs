@@ -228,10 +228,11 @@ impl UtilsApp {
                         self.tab = tab;
                     }
                 } else if let Some(name) = id.strip_prefix("tools.")
-                    && let Some(sub) = SubTab::ALL.into_iter().find(|s| sub_id(*s) == name) {
-                        self.tab = Tab::Tools;
-                        self.tools.select(sub);
-                    }
+                    && let Some(sub) = SubTab::ALL.into_iter().find(|s| sub_id(*s) == name)
+                {
+                    self.tab = Tab::Tools;
+                    self.tools.select(sub);
+                }
             }
         }
         ctx.request_repaint();

@@ -49,7 +49,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut NotesState, text: &mut String) {
     // O campo ocupa tudo menos a linha do rodapé (contagem), que precisa caber
     // na janela mínima do app.
     let height = (ui.available_height() - 26.0).max(120.0);
-    let resp = ui.add_sized(egui::vec2(ui.available_width(), height), kit::block(text).hint_text(tr("Type anything — it saves on its own")));
+    let resp = ui
+        .add_sized(egui::vec2(ui.available_width(), height), kit::block(text).hint_text(tr("Type anything — it saves on its own")))
+        .accessible_name(tr("Scratchpad"));
     if resp.changed() {
         state.touch(now);
     }

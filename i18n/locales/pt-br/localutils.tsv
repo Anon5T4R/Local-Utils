@@ -22,7 +22,7 @@
 	Cancel	Cancelar
 	Remove	Remover
 	QR code	Código QR
-	Copied ✓	Copiado ✓
+	Copied	Copiado
 	Could not copy	Não foi possível copiar
 	Pinned	Fixado
 	Unpinned	Desafixado
@@ -169,7 +169,7 @@
 	Type anything — it saves on its own	Escreva qualquer coisa — salva sozinho
 	{n} characters	{n} caracteres
 	{n} lines	{n} linhas
-	saved ✓	salvo ✓
+	saved	salvo
 	Copy	Copiar
 	Convert	Converter
 	Capture from screen	Capturar da tela
@@ -230,3 +230,6 @@
 	Export history…	Exportar histórico…
 	Import history…	Importar histórico…
 	Clear search	Limpar a busca
+	Text size	Tamanho do texto
+	Result	Resultado
+	Format	Formato

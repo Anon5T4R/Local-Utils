@@ -123,6 +123,12 @@ pub fn modal_frame(ctx: &egui::Context) -> egui::Frame {
         .shadow(style.visuals.window_shadow)
 }
 
+/// Largura de um diálogo: a pedida, ou o que cabe na janela quando ela é mais estreita (a moldura do diálogo
+/// come 40 px e a borda da janela 16).
+pub fn dialog_width(ctx: &egui::Context, wanted: f32) -> f32 {
+    wanted.min(ctx.viewport_rect().width() - 56.0)
+}
+
 /// Visuals de dentro do diálogo: campos com contorno e no tom "base" (o cartão
 /// é o "sunken" — sem isso o campo some no fundo do modal).
 pub fn begin_dialog(ui: &mut egui::Ui) {
@@ -143,28 +149,35 @@ pub fn begin_dialog(ui: &mut egui::Ui) {
 /// Botão pill: `primary` preenche com o accent, o secundário fica no contorno.
 /// Desenhado à mão porque o `egui::Button` não tem raio/altura própria.
 pub fn pill(ui: &mut egui::Ui, label: &str, primary: bool) -> egui::Response {
+    pill_if(ui, label, primary, true)
+}
+
+/// [`pill`] que pode ficar desligado. Prefira a `add_enabled_ui(pill)`: o filho que ela cria não quebra linha dentro
+/// de um `horizontal_wrapped`.
+pub fn pill_if(ui: &mut egui::Ui, label: &str, primary: bool, enabled: bool) -> egui::Response {
     let skin = Skin::of(ui);
     if primary {
-        pill_colored(ui, label, skin.accent, skin.on_accent, false)
+        pill_colored(ui, label, skin.accent, skin.on_accent, false, enabled)
     } else {
-        pill_colored(ui, label, egui::Color32::TRANSPARENT, skin.text, true)
+        pill_colored(ui, label, egui::Color32::TRANSPARENT, skin.text, true, enabled)
     }
 }
 
 /// Pill de ação destrutiva (vermelho do tema — legível nas duas polaridades).
 pub fn pill_danger(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let skin = Skin::of(ui);
-    pill_colored(ui, label, skin.danger, ink_on(skin.danger), false)
+    pill_colored(ui, label, skin.danger, ink_on(skin.danger), false, true)
 }
 
 /// Pill com cores explícitas; `outline` desenha só a borda.
-fn pill_colored(ui: &mut egui::Ui, label: &str, fill: egui::Color32, ink: egui::Color32, outline: bool) -> egui::Response {
+fn pill_colored(ui: &mut egui::Ui, label: &str, fill: egui::Color32, ink: egui::Color32, outline: bool, enabled: bool) -> egui::Response {
     let skin = Skin::of(ui);
-    let enabled = ui.is_enabled();
+    let enabled = enabled && ui.is_enabled();
     let ink = if enabled { ink } else { skin.muted };
     let font = egui::TextStyle::Button.resolve(ui.style());
     let galley = ui.painter().layout_no_wrap(label.to_owned(), font, ink);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(galley.size().x + 28.0, 28.0), egui::Sense::click());
+    let sense = if enabled { egui::Sense::click() } else { egui::Sense::hover() };
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(galley.size().x + 28.0, 28.0), sense);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     let hovered = resp.hovered() && enabled;
     let fill = if !enabled {

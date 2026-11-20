@@ -303,7 +303,7 @@ fn output_row(ui: &mut egui::Ui, value: &str, texts: &mut History, out: &mut Out
     ui.horizontal(|ui| {
         let mut shown = value.to_string();
         let copy_w = 96.0 + ui.spacing().item_spacing.x;
-        ui.add(kit::line(&mut shown).interactive(false).desired_width((ui.available_width() - copy_w).max(80.0)));
+        ui.add(kit::line(&mut shown).interactive(false).desired_width((ui.available_width() - copy_w).max(80.0))).accessible_name(tr("Result"));
         if !value.is_empty() && kit::pill(ui, tr("Copy"), false).clicked() {
             let (changed, status) = copy_new_text(texts, value);
             out.history_changed |= changed;
@@ -325,7 +325,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DevState, texts: &mut History) -> Out
     egui::ScrollArea::vertical().id_salt("dev-scroll").auto_shrink([false, false]).show(ui, |ui| {
         // ── Base64 ───────────────────────────────────────────────────
         heading(ui, tr("Base64"));
-        ui.add(kit::line(&mut state.b64_in).hint_text(tr("Input")).desired_width(f32::INFINITY));
+        ui.add(kit::line(&mut state.b64_in).hint_text(tr("Input")).desired_width(f32::INFINITY)).accessible_name(tr("Input"));
         ui.horizontal(|ui| {
             if kit::pill(ui, tr("Encode"), true).clicked() {
                 state.b64_out = base64_encode(state.b64_in.as_bytes());
@@ -353,7 +353,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DevState, texts: &mut History) -> Out
 
         // ── URL ──────────────────────────────────────────────────────
         heading(ui, tr("URL"));
-        ui.add(kit::line(&mut state.url_in).hint_text(tr("Input")).desired_width(f32::INFINITY));
+        ui.add(kit::line(&mut state.url_in).hint_text(tr("Input")).desired_width(f32::INFINITY)).accessible_name(tr("Input"));
         ui.horizontal(|ui| {
             if kit::pill(ui, tr("Encode"), true).clicked() {
                 state.url_out = url_encode(&state.url_in);
@@ -381,7 +381,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DevState, texts: &mut History) -> Out
 
         // ── Hash ─────────────────────────────────────────────────────
         heading(ui, tr("Hash"));
-        ui.add(kit::line(&mut state.hash_in).hint_text(tr("Input")).desired_width(f32::INFINITY));
+        ui.add(kit::line(&mut state.hash_in).hint_text(tr("Input")).desired_width(f32::INFINITY)).accessible_name(tr("Input"));
         // Duas passadas pequenas por frame: texto de ferramenta é curto.
         let hash = (sha256_hex(&state.hash_in), md5_hex(&state.hash_in));
         ui.label(egui::RichText::new("SHA-256").small().weak());
@@ -408,7 +408,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut DevState, texts: &mut History) -> Out
 
         // ── Timestamp ────────────────────────────────────────────────
         heading(ui, tr("Timestamp"));
-        ui.add(kit::line(&mut state.iso_in).hint_text(tr("ISO date (e.g. 2026-11-04T14:30:00)")).desired_width(f32::INFINITY));
+        ui.add(kit::line(&mut state.iso_in).hint_text(tr("ISO date (e.g. 2026-11-04T14:30:00)")).desired_width(f32::INFINITY))
+            .accessible_name(tr("ISO date (e.g. 2026-11-04T14:30:00)"));
         ui.horizontal(|ui| {
             if kit::pill(ui, tr("To epoch"), true).clicked() {
                 // A data digitada é LOCAL; o epoch mostrado é UTC.
@@ -427,7 +428,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DevState, texts: &mut History) -> Out
             }
         });
         ui.add_space(4.0);
-        ui.add(kit::line(&mut state.epoch_in).hint_text(tr("Unix epoch (seconds)")).desired_width(f32::INFINITY));
+        ui.add(kit::line(&mut state.epoch_in).hint_text(tr("Unix epoch (seconds)")).desired_width(f32::INFINITY)).accessible_name(tr("Unix epoch (seconds)"));
         ui.horizontal(|ui| {
             if kit::pill(ui, tr("To ISO"), true).clicked() {
                 match state.epoch_in.trim().parse::<i64>() {

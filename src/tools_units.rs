@@ -208,12 +208,17 @@ pub struct Outcome {
 /// da categoria corrente.
 fn unit_combo(ui: &mut egui::Ui, id: &str, label: &str, units: &'static [Unit], index: &mut usize, width: f32) {
     ui.vertical(|ui| {
-        ui.label(egui::RichText::new(label).small().color(Skin::of(ui).muted));
-        egui::ComboBox::from_id_salt(id).selected_text(units.get(*index).map_or("", |unit| unit.id)).width(width).show_ui(ui, |ui| {
-            for (i, unit) in units.iter().enumerate() {
-                ui.selectable_value(index, i, unit.id);
-            }
-        });
+        let caption = ui.label(egui::RichText::new(label).small().color(Skin::of(ui).muted));
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(units.get(*index).map_or("", |unit| unit.id))
+            .width(width)
+            .show_ui(ui, |ui| {
+                for (i, unit) in units.iter().enumerate() {
+                    ui.selectable_value(index, i, unit.id);
+                }
+            })
+            .response
+            .labelled_by(caption.id);
     });
 }
 
@@ -224,7 +229,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UnitsState, texts: &mut History) -> O
 
     kit::column(ui, CONTENT_W, |ui| {
         // Categoria: segmented control (nível 2), abaixo das pills da aba.
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             for cat in Category::ALL {
                 if kit::segmented(ui, cat.label(), state.cat == cat).clicked() && state.cat != cat {
                     state.cat = cat;
@@ -241,9 +246,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UnitsState, texts: &mut History) -> O
             let skin = Skin::of(ui);
 
             // ── valor digitado, grande (mono) ────────────────────────
-            ui.label(egui::RichText::new(tr("Value")).small().color(skin.muted));
+            let value_label = ui.label(egui::RichText::new(tr("Value")).small().color(skin.muted));
             let field_w = ui.available_width();
-            ui.add(
+            let value_field = ui.add(
                 egui::TextEdit::singleline(&mut state.value)
                     .frame(egui::Frame::NONE)
                     .font(egui::FontId::monospace(30.0))
@@ -251,20 +256,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut UnitsState, texts: &mut History) -> O
                     .margin(egui::Margin::symmetric(0, 4))
                     .desired_width(field_w),
             );
+            value_field.labelled_by(value_label.id);
             ui.add_space(4.0);
             kit::hairline(ui);
             ui.add_space(12.0);
 
             // ── De / ⇄ / Para ────────────────────────────────────────
             let units = state.cat.units();
-            let combo_w = ((ui.available_width() - 100.0) / 2.0).max(120.0);
+            let combo_w = ((ui.available_width() - 100.0) / 2.0).max(70.0);
             ui.horizontal(|ui| {
                 unit_combo(ui, "units-from", tr("From"), units, &mut state.from, combo_w);
                 ui.add_space(8.0);
                 // Troca origem e destino de uma vez (o valor digitado fica).
                 ui.vertical(|ui| {
                     ui.add_space(18.0);
-                    if kit::ghost(ui, "⇄").on_hover_text(tr("Swap units")).clicked() {
+                    if kit::ghost(ui, "↔").on_hover_text(tr("Swap units")).clicked() {
                         std::mem::swap(&mut state.from, &mut state.to);
                     }
                 });
@@ -295,10 +301,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UnitsState, texts: &mut History) -> O
                     // Linha de referência ("1 ft = 30.48 cm"): o par de unidades
                     // em corpo pequeno, para conferir a escala sem converter.
                     if let (Some(from), Some(to)) = (state.origin_id(), state.target_id())
-                        && let Some(unit_value) = convert(state.cat, 1.0, from, to) {
-                            ui.add_space(4.0);
-                            ui.label(egui::RichText::new(format!("1 {from} = {} {to}", fmt_value(unit_value))).small().color(skin.muted));
-                        }
+                        && let Some(unit_value) = convert(state.cat, 1.0, from, to)
+                    {
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(format!("1 {from} = {} {to}", fmt_value(unit_value))).small().color(skin.muted));
+                    }
                 }
                 Err(key) => {
                     ui.label(egui::RichText::new(format!("⚠ {}", key)).color(skin.danger));
@@ -322,7 +329,7 @@ mod tests {
     fn check(cat: Category, value: f64, from: &str, to: &str, want: f64) {
         match convert(cat, value, from, to) {
             Some(got) if perto(got, want) => {}
-            other => panic!("{value} {from}→{to}: esperava {want}, veio {other:?}"),
+            other => panic!("{value} {from} -> {to}: esperava {want}, veio {other:?}"),
         }
     }
 

@@ -290,9 +290,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut PickerState, history: &mut History) -
             ui.label(egui::RichText::new(hex_text(state.current)).size(22.0).strong().color(skin.text));
             ui.add_space(8.0);
             if kit::pill(ui, tr("Capture from screen"), true).clicked()
-                && let Err(e) = state.hot.begin(ui.ctx()) {
-                    out.status = Some(format!("⚠ {}: {e}", tr("Could not capture the screen")));
-                }
+                && let Err(e) = state.hot.begin(ui.ctx())
+            {
+                out.status = Some(format!("⚠ {}: {e}", tr("Could not capture the screen")));
+            }
         });
     });
     ui.add_space(12.0);
@@ -329,14 +330,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut PickerState, history: &mut History) -
 fn format_row(ui: &mut egui::Ui, state: &mut PickerState, format: Format, history: &mut History, out: &mut Outcome) {
     let skin = Skin::of(ui);
     ui.horizontal(|ui| {
-        ui.add_sized([40.0, 20.0], egui::Label::new(egui::RichText::new(format.key()).color(skin.muted)));
+        let caption = ui.add_sized([40.0, 20.0], egui::Label::new(egui::RichText::new(format.key()).color(skin.muted)));
 
         let field = match format {
             Format::Hex => &mut state.hex,
             Format::Rgb => &mut state.rgb,
             Format::Hsl => &mut state.hsl,
         };
-        let resp = ui.add(kit::line(field).desired_width(180.0));
+        let resp = ui.add(kit::line(field).desired_width(180.0)).labelled_by(caption.id);
 
         // Digitou: parseia o campo editado; sucesso atualiza os outros dois,
         // falha deixa o texto como está e marca o aviso (o usuário pode estar
@@ -753,7 +754,7 @@ mod tests {
         // O texto é arredondado ao inteiro, então a volta não é exata.
         let text = hsl_text(egui::Color32::from_rgb(30, 120, 200));
         let (r, g, b) = parse_hsl(&text).expect("o texto que a aba gera parseia");
-        assert!(r.abs_diff(30) <= 8 && g.abs_diff(120) <= 8 && b.abs_diff(200) <= 8, "{text} → {r},{g},{b}");
+        assert!(r.abs_diff(30) <= 8 && g.abs_diff(120) <= 8 && b.abs_diff(200) <= 8, "{text} -> {r},{g},{b}");
     }
 
     #[test]

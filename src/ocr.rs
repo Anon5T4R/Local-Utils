@@ -43,9 +43,10 @@ impl Ocr {
             return Err("a entrada não é uma imagem".into());
         }
         if let Some((id, text)) = &self.cache
-            && *id == entry.id {
-                return Ok(Some(text.clone()));
-            }
+            && *id == entry.id
+        {
+            return Ok(Some(text.clone()));
+        }
         // Uma leitura por vez: pedir de novo enquanto roda não empilha threads.
         if self.pending.is_some() {
             return Ok(None);

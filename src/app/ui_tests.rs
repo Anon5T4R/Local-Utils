@@ -9,9 +9,10 @@ use crate::prefs::Prefs;
 use craft_icons::ThemeMode;
 use egui::accesskit::Role;
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 
 use super::{Tab, UtilsApp};
+use crate::tools::SubTab;
 use crate::history::History;
 
 /// A menor largura que a janela pode ter na prática (o app não fixa mínimo).
@@ -39,20 +40,15 @@ fn app(name: &str, cfg: Prefs) -> UtilsApp {
 }
 
 fn harness_sized(app: UtilsApp, width: f32) -> Harness<'static, UtilsApp> {
-    Harness::builder()
-        .with_size(egui::vec2(width, 680.0))
-        .with_step_dt(1.0 / 60.0)
-        .allow_missing_glyphs()
-        .with_accessibility_check(false)
-        .build_ui_state(
-            move |ui, app: &mut UtilsApp| {
-                egui_extras::install_image_loaders(ui.ctx());
-                crate::i18n::set_language(&app.cfg.language);
-                crate::theme::apply(ui.ctx(), app.cfg.mode());
-                app.frame(ui);
-            },
-            app,
-        )
+    Harness::builder().with_size(egui::vec2(width, 680.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+        move |ui, app: &mut UtilsApp| {
+            egui_extras::install_image_loaders(ui.ctx());
+            crate::i18n::set_language(&app.cfg.language);
+            crate::theme::apply(ui.ctx(), app.cfg.mode());
+            app.frame(ui);
+        },
+        app,
+    )
 }
 
 fn harness(app: UtilsApp) -> Harness<'static, UtilsApp> {
@@ -257,6 +253,268 @@ fn the_top_bar_buttons_fit_narrow_and_wide_windows() {
         }
         assert!(rects.iter().all(|r| r.min.x >= 0.0 && r.max.x <= width), "{width}: botão fora da janela: {rects:?}");
     }
+}
+
+// ── Largura mínima, nomes acessíveis e conteúdo de verdade ────────────────────────────────────────────────
+
+/// O app com a lista cheia: textos curtos, longos e sem espaço, rico, arquivos com caminho comprido e um fixado.
+fn loaded(name: &str, prefs: Prefs) -> UtilsApp {
+    use crate::history::{Entry, Kind};
+    let mut app = app(name, prefs);
+    let long_path = r"C:\Users\Joao\Documents\Projetos\relatorio-trimestral-com-um-nome-muito-comprido-mesmo-final-v7.xlsx";
+    let entries = [
+        Entry { id: 1, ts_ms: 1_000, kind: Kind::Text, text: Some("uma cópia curta".into()), ..Default::default() },
+        Entry { id: 2, ts_ms: 2_000, kind: Kind::Text, text: Some("a".repeat(240)), pinned: true, ..Default::default() },
+        Entry { id: 3, ts_ms: 3_000, kind: Kind::Text, text: Some("várias linhas\nsegunda linha\nterceira".into()), ..Default::default() },
+        Entry { id: 4, ts_ms: 4_000, kind: Kind::Html, text: Some("<p>texto <b>rico</b></p>".into()), ..Default::default() },
+        Entry { id: 5, ts_ms: 5_000, kind: Kind::Files, files: Some(vec![long_path.into()]), ..Default::default() },
+    ];
+    for entry in entries {
+        app.history.push(entry);
+    }
+    app
+}
+
+/// Nenhum nó da tela (nem de diálogo) passa da borda de uma janela de `width`.
+fn assert_fits(harness: &Harness<'_, UtilsApp>, width: f32, what: &str) {
+    for node in harness.root().children_recursive() {
+        let Some(rect) = node.accesskit_node().bounding_box() else { continue };
+        let role = node.accesskit_node().role();
+        // O texto de um campo é cortado pelo próprio campo (que é conferido): só o campo conta.
+        if rect.width() > 0.0 && role != Role::TextRun {
+            let label = node.accesskit_node().label().unwrap_or_default();
+            assert!(rect.x0 >= -0.5 && rect.x1 <= f64::from(width) + 0.5, "{what}: {role:?} {label:?} fora da janela de {width}: {rect:?}");
+        }
+    }
+}
+
+type Setup = fn(&mut UtilsApp);
+
+/// Cada aba, e cada sub-aba de Ferramentas, montada com conteúdo.
+fn tab_setups() -> Vec<(&'static str, Setup)> {
+    vec![
+        ("clipboard", |app| app.tab = Tab::Clipboard),
+        ("screenshot", |app| {
+            app.tab = Tab::Screenshot;
+            app.shot = Some(crate::shot_editor::Shot::new(image::RgbaImage::from_pixel(640, 360, image::Rgba([80, 120, 200, 255]))));
+        }),
+        ("system", |app| app.tab = Tab::Sistema),
+        ("tools-clock", |app| {
+            app.tab = Tab::Tools;
+            app.tools.select(SubTab::Clock);
+        }),
+        ("tools-calc", |app| {
+            app.tab = Tab::Tools;
+            app.tools.select(SubTab::Calc);
+        }),
+        ("tools-units", |app| {
+            app.tab = Tab::Tools;
+            app.tools.select(SubTab::Units);
+        }),
+        ("tools-dev", |app| {
+            app.tab = Tab::Tools;
+            app.tools.select(SubTab::Dev);
+        }),
+        ("notes", |app| {
+            app.tab = Tab::Scratchpad;
+            app.cfg.notes = "uma nota com texto\nem duas linhas".into();
+        }),
+        ("color", |app| app.tab = Tab::Cor),
+        ("convert", |app| {
+            app.tab = Tab::Converter;
+            let dir = scratch("convert-files");
+            std::fs::create_dir_all(&dir).expect("pasta");
+            let long = dir.join("fotografia-das-ferias-na-praia-com-um-nome-de-arquivo-bem-comprido-demais.png");
+            image::RgbaImage::from_pixel(8, 8, image::Rgba([200, 60, 60, 255])).save(&long).expect("png");
+            let short = dir.join("foto.png");
+            image::RgbaImage::from_pixel(8, 8, image::Rgba([60, 60, 200, 255])).save(&short).expect("png");
+            let text = dir.join("notas.txt");
+            std::fs::write(&text, "não é imagem").expect("txt");
+            app.convert.enqueue([long, short, text]);
+        }),
+    ]
+}
+
+/// Cada diálogo e janela do app.
+fn dialog_setups() -> Vec<(&'static str, Setup)> {
+    vec![
+        ("settings", |app| app.open_settings()),
+        ("clip-edit", |app| app.clip_ui.open_edit(2, &"a".repeat(240))),
+        ("clip-qr", |app| app.clip_ui.open_qr("https://exemplo.com/um/caminho/qualquer")),
+        ("clip-ocr", |app| app.clip_ui.show_ocr(1, "texto lido da imagem pelo OCR, numa linha só bem comprida para forçar a quebra".into())),
+        ("clip-clear", |app| app.clip_ui.open_clear()),
+        ("alarm-new", |app| {
+            app.tab = Tab::Tools;
+            app.tools.open_alarm();
+        }),
+        ("end-process", |app| {
+            app.tab = Tab::Sistema;
+            app.system.ask_kill(4242, "um-processo-com-nome-bem-comprido-mesmo.exe");
+        }),
+        ("update-note", |app| app.update_note = Some("atualizado (0.6.13)".into())),
+    ]
+}
+
+/// Toda aba cabe na largura mínima, em português e espanhol (os textos mais longos), com conteúdo.
+#[test]
+fn every_tab_fits_the_narrow_window() {
+    for (code, mode) in [("pt-br", ThemeMode::Light), ("es", ThemeMode::Dark)] {
+        for (name, setup) in tab_setups() {
+            let mut app = loaded("tab-narrow", Prefs::new(code, mode));
+            setup(&mut app);
+            let mut harness = harness_sized(app, NARROW);
+            harness.run_steps(4);
+            shot(&mut harness, &format!("tab-{name}-{code}-340"));
+            assert_fits(&harness, NARROW, &format!("{name} ({code})"));
+        }
+    }
+}
+
+/// Todo diálogo cabe na largura mínima: nenhum controle passa da borda da janela.
+#[test]
+fn every_dialog_fits_the_narrow_window() {
+    for (code, mode) in [("pt-br", ThemeMode::Dark), ("es", ThemeMode::Light)] {
+        for (name, setup) in dialog_setups() {
+            let mut app = loaded("dialog-narrow", Prefs::new(code, mode));
+            setup(&mut app);
+            let mut harness = harness_sized(app, NARROW);
+            harness.run_steps(4);
+            shot(&mut harness, &format!("dialog-{name}-{code}-340"));
+            assert_fits(&harness, NARROW, &format!("{name} ({code})"));
+        }
+    }
+}
+
+/// Todo campo de texto, caixa de combinação, valor arrastável e controle deslizante se anuncia por um nome
+/// (leitor de tela), em cada aba e em cada diálogo.
+#[test]
+fn every_field_has_a_name() {
+    let roles = [Role::TextInput, Role::MultilineTextInput, Role::PasswordInput, Role::ComboBox, Role::SpinButton, Role::Slider];
+    let all = tab_setups().into_iter().chain(dialog_setups());
+    for (name, setup) in all {
+        let mut app = loaded("names", Prefs::new("en", ThemeMode::Light));
+        setup(&mut app);
+        let mut harness = harness(app);
+        harness.run_steps(4);
+        for node in harness.root().children_recursive() {
+            let role = node.accesskit_node().role();
+            if roles.contains(&role) {
+                let label = node.accesskit_node().label().unwrap_or_default();
+                assert!(!label.is_empty(), "{name}: {role:?} sem nome");
+            }
+        }
+    }
+}
+
+/// A barra de cima e a paleta cabem na largura mínima, com a lista cheia por baixo.
+#[test]
+fn the_bar_and_the_palette_fit_the_narrow_window_over_content() {
+    for width in [NARROW, 480.0] {
+        let mut harness = harness_sized(loaded("palette-narrow", Prefs::new("pt-br", ThemeMode::Dark)), width);
+        harness.run_steps(2);
+        assert_fits(&harness, width, "barra");
+        click_bar(&mut harness, SEARCH);
+        harness.run_steps(2);
+        assert!(harness.state().palette.is_open());
+        let rows: Vec<egui::Rect> = harness.get_all_by_role(Role::ListBoxOption).map(|node| node.rect()).collect();
+        assert!(!rows.is_empty());
+        assert_fits(&harness, width, "paleta");
+    }
+}
+
+/// O que pode ser longo (caminho de arquivo, texto sem espaço) corta com reticências ANTES do ★ e dos botões.
+#[test]
+fn long_clipboard_text_stops_before_the_buttons() {
+    let mut harness = harness_sized(loaded("long-text", Prefs::new("en", ThemeMode::Light)), NARROW);
+    harness.run_steps(4);
+    let stars: Vec<egui::Rect> = harness.get_all_by_label_contains("☆").chain(harness.get_all_by_label_contains("★")).map(|n| n.rect()).collect();
+    assert!(!stars.is_empty());
+    let star_left = stars.iter().map(|r| r.min.x).fold(f32::MAX, f32::min);
+    for needle in ["aaaaaaaa", "relatorio-trimestral"] {
+        let text = harness.get_by_label_contains(needle).rect();
+        assert!(text.max.x <= star_left + 0.5, "{needle}: o texto {text:?} passa por baixo do ★ em {star_left}");
+    }
+}
+
+/// Todo caractere que a interface pode desenhar (literais do código e catálogos) existe nas fontes: sem glyph a
+/// tela mostraria a "caixinha".
+#[test]
+fn every_glyph_of_the_interface_exists() {
+    let mut harness = harness(app("glyphs", Prefs::new("en", ThemeMode::Light)));
+    harness.run_steps(2);
+    let ctx = harness.ctx.clone();
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut found: Vec<(char, String)> = Vec::new();
+    for code in ["pt-br", "es"] {
+        let path = root.join(format!("i18n/locales/{code}/localutils.tsv"));
+        let text = std::fs::read_to_string(&path).expect("catálogo");
+        // As linhas `@id` (o nome do idioma) não são texto de tela e já estão em fontes comuns; o resto é.
+        for line in text.lines().filter(|line| !line.starts_with('@')) {
+            found.extend(line.chars().filter(|c| !c.is_ascii()).map(|c| (c, format!("{code}: {line}"))));
+        }
+    }
+    fn walk(dir: &Path, found: &mut Vec<(char, String)>) {
+        for entry in std::fs::read_dir(dir).expect("src").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, found);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let source = std::fs::read_to_string(&path).expect("fonte");
+                for literal in string_literals(&source) {
+                    found.extend(literal.chars().filter(|c| !c.is_ascii()).map(|c| (c, format!("{}: {literal}", path.display()))));
+                }
+            }
+        }
+    }
+    walk(&root.join("src"), &mut found);
+
+    let font = egui::FontId::proportional(14.0);
+    let mut missing: Vec<String> = Vec::new();
+    for (c, origin) in found {
+        // Espaços e controles (nbsp, tab…) não têm glyph próprio e não aparecem como caixinha.
+        if c.is_whitespace() || c.is_control() {
+            continue;
+        }
+        if !ctx.fonts_mut(|fonts| fonts.has_glyph(&font, c)) {
+            missing.push(format!("{c} (U+{:04X}) em {origin}", u32::from(c)));
+        }
+    }
+    missing.sort();
+    missing.dedup();
+    assert!(missing.is_empty(), "glyphs ausentes:\n{}", missing.join("\n"));
+}
+
+/// Os literais de texto de um arquivo-fonte, sem comentários (`//`) e sem os literais de caractere.
+fn string_literals(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in source.lines() {
+        let mut chars = line.chars().peekable();
+        let mut current: Option<String> = None;
+        while let Some(c) = chars.next() {
+            match (&mut current, c) {
+                (Some(text), '\\') => {
+                    if let Some(next) = chars.next() {
+                        text.push(next);
+                    }
+                }
+                (Some(_), '"') => out.extend(current.take()),
+                (Some(text), other) => text.push(other),
+                (None, '"') => current = Some(String::new()),
+                (None, '/') if chars.peek() == Some(&'/') => break,
+                (None, '\'') => {
+                    // Literal de caractere (`'"'`, `'\n'`) ou lifetime: pula até o fecho quando houver.
+                    let rest: String = chars.clone().take(3).collect();
+                    if rest.starts_with("\"'") {
+                        chars.next();
+                        chars.next();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    out
 }
 
 /// As capturas de revisão: duas larguras (mínima e ~1100), nos dois temas, com a barra, as Configurações e a paleta.

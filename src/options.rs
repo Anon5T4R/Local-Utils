@@ -165,8 +165,7 @@ pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(
 
     let resp = egui::Modal::new(egui::Id::unique("utils-options")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
-        // Cabe na janela estreita: a moldura do diálogo come 40 px e a borda 16.
-        ui.set_width(520.0_f32.min(ctx.viewport_rect().width() - 56.0));
+        ui.set_width(kit::dialog_width(ctx, 520.0));
         ui.horizontal(|ui| {
             ui.heading(tr("Settings"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -210,9 +209,11 @@ pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(
             // ── som do alarme (vale no próximo toque) ────────────────────
             // O caminho do `.wav` fica no config e viaja com ele; o "Testar" toca
             // UMA vez pra ouvir antes de confiar no alarme.
-            ui.label(egui::RichText::new(tr("Alarm sound")).strong());
+            let sound_label = ui.label(egui::RichText::new(tr("Alarm sound")).strong());
             ui.horizontal(|ui| {
-                ui.add(kit::line(&mut state.alarm_sound).hint_text(tr("Path to a .wav file")).desired_width(360.0));
+                // O campo enche o que sobra da linha, deixando lugar para o "Testar".
+                let width = (ui.available_width() - 90.0).max(100.0);
+                ui.add(kit::line(&mut state.alarm_sound).hint_text(tr("Path to a .wav file")).desired_width(width)).labelled_by(sound_label.id);
                 let test = ui.add_enabled_ui(windows, |ui| kit::pill(ui, tr("Test"), false)).inner;
                 if test.clicked() {
                     crate::alarm_sound::preview(&state.alarm_sound);
@@ -230,7 +231,7 @@ pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(
 
             // ── atalho global (vale no próximo arranque) ──────────────────
             ui.horizontal(|ui| {
-                ui.label(tr("Global hotkey"));
+                let hotkey_label = ui.label(tr("Global hotkey"));
                 // Captura ANTES do campo: o `TextEdit` com foco consome as teclas
                 // do frame, e a leitura das teclas tem que acontecer primeiro.
                 if state.capturing {
@@ -240,12 +241,16 @@ pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(
                 // buffer é DESCARTÁVEL (recriado a cada frame), então o que o
                 // usuário digitar nele não mexe no rascunho.
                 let mut shown = if state.capturing { tr("Press the new shortcut… (Esc cancels)").to_string() } else { state.hotkey.clone() };
-                let field = ui.add_enabled(windows, kit::line(&mut shown).hint_text(DEFAULT_HOTKEY).desired_width(200.0));
+                let width = ui.available_width().min(200.0);
+                let field = ui.add_enabled(windows, kit::line(&mut shown).hint_text(DEFAULT_HOTKEY).desired_width(width)).labelled_by(hotkey_label.id);
                 if state.capturing && !field.has_focus() {
                     // Foco é o que dá "no campo" à captura (o egui entrega as
                     // teclas pelo `Context`, não pelo widget).
                     field.request_focus();
                 }
+            });
+            // O botão e o atalho em texto legível ficam numa segunda linha: a primeira não cabe na janela estreita.
+            ui.horizontal(|ui| {
                 let label = if state.capturing { tr("Cancel") } else { tr("Register shortcut") };
                 let button = ui.add_enabled_ui(windows, |ui| kit::pill(ui, label, false)).inner;
                 if button.clicked() {
@@ -263,14 +268,15 @@ pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(
             ui.add_space(8.0);
 
             // ── apps sensíveis (vale no próximo arranque) ─────────────────
-            ui.label(egui::RichText::new(tr("Sensitive apps")).strong());
+            let apps_label = ui.label(egui::RichText::new(tr("Sensitive apps")).strong());
             ui.label(egui::RichText::new(tr("Applies after restarting the app")).small().weak());
             ui.add_space(6.0);
             let mut remove: Option<usize> = None;
             egui::ScrollArea::vertical().id_salt("utils-options-exclude").max_height(150.0).show(ui, |ui| {
                 for (i, app) in state.exclude.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
-                        ui.add(kit::line(app).desired_width(360.0));
+                        let width = (ui.available_width() - 44.0).max(100.0);
+                        ui.add(kit::line(app).desired_width(width)).labelled_by(apps_label.id);
                         if craft_icons::ui::button(ui, craft_icons::Icon::Delete, tr("Remove")).clicked() {
                             remove = Some(i);
                         }
@@ -281,7 +287,9 @@ pub fn show(ctx: &egui::Context, state: &mut OptionsState, general: impl FnOnce(
                 state.exclude.remove(i);
             }
             ui.horizontal(|ui| {
-                ui.add(kit::line(&mut state.new_exclude).hint_text(tr("Executable name (e.g. keepass.exe)")).desired_width(360.0));
+                let width = (ui.available_width() - 70.0).max(100.0);
+                let hint = tr("Executable name (e.g. keepass.exe)");
+                ui.add(kit::line(&mut state.new_exclude).hint_text(hint).desired_width(width)).accessible_name(hint);
                 if kit::pill(ui, tr("Add"), false).clicked() {
                     let name = state.new_exclude.trim().to_ascii_lowercase();
                     if !name.is_empty() && !state.exclude.iter().any(|a| a.eq_ignore_ascii_case(&name)) {

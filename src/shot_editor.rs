@@ -471,12 +471,15 @@ pub fn show(ui: &mut egui::Ui, hotkey: &str, shot: Option<&mut Shot>) -> Outcome
     // Del apaga a anotação selecionada. Só há seleção na ferramenta Select,
     // que não mostra campo de texto: a tecla não é roubada de ninguém. Com um
     // arraste em andamento o índice do `selected` dançaria — ignora.
-    if shot.tool == Tool::Select && shot.moving.is_none()
+    if shot.tool == Tool::Select
+        && shot.moving.is_none()
         && let Some(idx) = shot.selected
-            && ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)) && shot.edits.remove(idx) {
-                shot.selected = None;
-                shot.dirty = true;
-            }
+        && ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete))
+        && shot.edits.remove(idx)
+    {
+        shot.selected = None;
+        shot.dirty = true;
+    }
 
     toolbar(ui, shot, &mut out);
     // Descartou: nada de canvas neste frame — o app limpa a captura no fim do
@@ -512,22 +515,24 @@ fn toolbar(ui: &mut egui::Ui, shot: &mut Shot, out: &mut Outcome) {
                 shot.cor = cor;
             }
         }
-        egui::color_picker::color_edit_button_srgba(ui, &mut shot.cor, egui::color_picker::Alpha::Opaque).on_hover_text(tr("Color"));
+        egui::color_picker::color_edit_button_srgba(ui, &mut shot.cor, egui::color_picker::Alpha::Opaque)
+            .on_hover_text(tr("Color"))
+            .accessible_name(tr("Color"));
 
         ui.separator();
-        ui.label(tr("Thickness"));
-        ui.add(egui::DragValue::new(&mut shot.espessura).range(1.0..=24.0).speed(0.2));
+        let thickness = ui.label(tr("Thickness"));
+        ui.add(egui::DragValue::new(&mut shot.espessura).range(1.0..=24.0).speed(0.2)).labelled_by(thickness.id);
         if matches!(shot.tool, Tool::Pixelate | Tool::Blur) {
-            ui.label(tr("Strength"));
-            ui.add(egui::DragValue::new(&mut shot.forca).range(1..=48));
+            let strength = ui.label(tr("Strength"));
+            ui.add(egui::DragValue::new(&mut shot.forca).range(1..=48)).labelled_by(strength.id);
         }
         if shot.tool == Tool::Text {
-            ui.add(egui::DragValue::new(&mut shot.tam).range(8.0..=200.0).suffix(" px"));
-            ui.add(kit::line(&mut shot.texto).hint_text(tr("Text to insert")).desired_width(160.0));
+            ui.add(egui::DragValue::new(&mut shot.tam).range(8.0..=200.0).suffix(" px")).accessible_name(tr("Text size"));
+            ui.add(kit::line(&mut shot.texto).hint_text(tr("Text to insert")).desired_width(160.0)).accessible_name(tr("Text to insert"));
         }
 
         ui.separator();
-        let undo = ui.add_enabled_ui(shot.edits.can_undo(), |ui| kit::pill(ui, tr("Undo"), false)).inner;
+        let undo = kit::pill_if(ui, tr("Undo"), false, shot.edits.can_undo());
         if undo.clicked() && shot.edits.undo() {
             shot.selected = None;
             shot.moving = None;
@@ -799,14 +804,15 @@ fn canvas(ui: &mut egui::Ui, shot: &mut Shot) {
 
     // Seleção: contorno tracejado fino em volta da anotação escolhida.
     if shot.tool == Tool::Select
-        && let Some(an) = shot.selected.and_then(|i| shot.edits.annotations().get(i)) {
-            let (p0, p1) = an.bounds();
-            let r = egui::Rect::from_two_pos(to_view(p0), to_view(p1));
-            let stroke = egui::Stroke::new(1.0_f32, ui.visuals().selection.stroke.color);
-            // `StrokeKind` só existe pro `rect_stroke`: pro tracejado ficar
-            // "Outside" a caixa é expandida meia espessura + 1 px de folga.
-            dashed_outline(&painter, r.expand(stroke.width * 0.5 + 1.0), stroke);
-        }
+        && let Some(an) = shot.selected.and_then(|i| shot.edits.annotations().get(i))
+    {
+        let (p0, p1) = an.bounds();
+        let r = egui::Rect::from_two_pos(to_view(p0), to_view(p1));
+        let stroke = egui::Stroke::new(1.0_f32, ui.visuals().selection.stroke.color);
+        // `StrokeKind` só existe pro `rect_stroke`: pro tracejado ficar
+        // "Outside" a caixa é expandida meia espessura + 1 px de folga.
+        dashed_outline(&painter, r.expand(stroke.width * 0.5 + 1.0), stroke);
+    }
 }
 
 /// Tolerância do hit-test em px da IMAGEM: o alvo confortável de ~6 px de tela
@@ -879,7 +885,7 @@ fn copy_to_clipboard(shot: &Shot) -> String {
         image_png: Some(png),
     };
     match clipboard::write_back(&entry) {
-        Ok(()) => tr("Copied ✓").to_string(),
+        Ok(()) => tr("Copied").to_string(),
         Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
     }
 }

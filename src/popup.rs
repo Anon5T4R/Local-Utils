@@ -296,11 +296,12 @@ fn draw(ui: &mut egui::Ui, state: &Arc<Mutex<State>>) {
             st.scroll_to = st.focus;
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
-            && let Some(row) = st.focus.and_then(|i| hits.get(i)).and_then(|i| st.rows.get(*i)) {
-                let id = row.id;
-                st.close_with(&ctx, Some(Cmd::Paste(id)));
-                return;
-            }
+            && let Some(row) = st.focus.and_then(|i| hits.get(i)).and_then(|i| st.rows.get(*i))
+        {
+            let id = row.id;
+            st.close_with(&ctx, Some(Cmd::Paste(id)));
+            return;
+        }
     }
 
     let skin = Skin::of(ui);
@@ -315,7 +316,9 @@ fn draw(ui: &mut egui::Ui, state: &Arc<Mutex<State>>) {
             // O botão de fechar reserva a largura ANTES do campo: com
             // `desired_width(INFINITY)` o campo comia a linha inteira e o botão
             // saía pela borda direita.
-            let field = ui.add(kit::line(&mut st.search).hint_text(tr("Search")).desired_width((ui.available_width() - CLOSE_BTN - 8.0).max(120.0)));
+            let field = ui
+                .add(kit::line(&mut st.search).hint_text(tr("Search")).desired_width((ui.available_width() - CLOSE_BTN - 8.0).max(120.0)))
+                .accessible_name(tr("Search"));
             if !st.focus_requested {
                 field.request_focus();
                 st.focus_requested = true;

@@ -70,6 +70,13 @@ impl ToolsState {
         self.clock.tick(clock, alarms, sound_file)
     }
 
+    /// Abre o diálogo de novo alarme (os testes de largura).
+    #[cfg(test)]
+    pub(crate) fn open_alarm(&mut self) {
+        self.sub = SubTab::Clock;
+        self.clock.open_alarm();
+    }
+
     /// Abre uma sub-aba (a paleta de comandos).
     pub(crate) fn select(&mut self, sub: SubTab) {
         self.sub = sub;
@@ -106,7 +113,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToolsState, texts: &mut History, alar
 
     // Nível 1 (Relógio · Calculadora · Unidades · Dev) em pills; o hairline e o
     // respiro separam do nível 2 de cada painel (segmented control).
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for sub in SubTab::ALL {
             if kit::pill(ui, sub.label(), state.sub == sub).clicked() {
                 state.sub = sub;

@@ -444,7 +444,7 @@ const KEYPAD: [&[(&str, KeyAct, PadKey)]; 5] = [
     &[
         ("0", KeyAct::Insert("0"), PadKey::Digit),
         (".", KeyAct::Insert("."), PadKey::Digit),
-        ("⌫", KeyAct::Backspace, PadKey::Op),
+        ("Del", KeyAct::Backspace, PadKey::Op),
         ("+", KeyAct::Insert("+"), PadKey::Op),
     ],
     &[
@@ -481,12 +481,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut CalcState, texts: &mut History) -> Ou
                     .margin(egui::Margin::symmetric(0, 4))
                     .desired_width(field_w),
             );
+            let field = field.accessible_name(tr("Expression"));
             // Digitou? O erro da conta anterior sai do visor (senão a mensagem
             // fica mentindo sobre a expressão que está na tela).
             if field.changed() {
                 state.error = None;
             }
-            // ⌫ fora do campo apaga o último caractere (com o campo focado o
+            // Del fora do campo apaga o último caractere (com o campo focado o
             // próprio TextEdit cuida disso).
             if !field.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Backspace)) {
                 state.expr.pop();
@@ -604,11 +605,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut CalcState, texts: &mut History) -> Ou
             }
         });
         if let Some(index) = reinsert
-            && let Some(line) = state.history.get(index) {
-                state.expr = line.expr.clone();
-                state.result = Some(line.value.clone());
-                state.error = None;
-            }
+            && let Some(line) = state.history.get(index)
+        {
+            state.expr = line.expr.clone();
+            state.result = Some(line.value.clone());
+            state.error = None;
+        }
         if let Some(value) = copy {
             let (changed, status) = copy_new_text(texts, &value);
             out.history_changed |= changed;

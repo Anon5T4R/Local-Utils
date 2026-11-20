@@ -217,6 +217,13 @@ pub struct ClockState {
     flash: Option<(String, u64)>,
 }
 
+#[cfg(test)]
+impl ClockState {
+    pub(crate) fn open_alarm(&mut self) {
+        self.alarm_open = true;
+    }
+}
+
 impl Default for ClockState {
     fn default() -> Self {
         let mut timer = Countdown::default();
@@ -453,8 +460,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut ClockState, alarms: &mut Vec<(String,
 }
 
 /// Fileira centralizada: o egui não centraliza `horizontal` sozinho, então a
-/// largura vem calculada de fora.
+/// largura vem calculada de fora. Na janela mais estreita que a fileira, ela quebra linha em vez de passar da borda.
 fn centered_row<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    if width > ui.available_width() {
+        return ui.horizontal_wrapped(add).inner;
+    }
     ui.horizontal(|ui| {
         ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
         add(ui)
@@ -519,7 +529,7 @@ fn timer_ui(ui: &mut egui::Ui, state: &mut ClockState, now: u64, out: &mut Outco
         let width = 200.0;
         let resp = centered_row(ui, width, |ui| {
             ui.allocate_ui_with_layout(egui::vec2(width, DISPLAY_SIZE), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.add(kit::line(&mut state.timer_text).desired_width(width))
+                ui.add(kit::line(&mut state.timer_text).desired_width(width)).accessible_name(tr("Timer"))
             })
             .inner
         });
@@ -590,9 +600,9 @@ fn pomodoro_ui(ui: &mut egui::Ui, state: &mut ClockState, now: u64) {
     ui.add_space(14.0);
     let labels_w = 340.0;
     centered_row(ui, labels_w, |ui| {
-        ui.label(egui::RichText::new(tr("Work (min)")).small());
+        let work_label = ui.label(egui::RichText::new(tr("Work (min)")).small());
         let mut work = state.pomo.work_min;
-        if ui.add(egui::DragValue::new(&mut work).range(1..=180)).changed() {
+        if ui.add(egui::DragValue::new(&mut work).range(1..=180)).labelled_by(work_label.id).changed() {
             state.pomo.work_min = work;
             // Parado, mudar o tempo da fase recarrega a contagem na hora.
             if !state.pomo.countdown.is_running() && state.pomo.phase == PomoPhase::Work {
@@ -600,9 +610,9 @@ fn pomodoro_ui(ui: &mut egui::Ui, state: &mut ClockState, now: u64) {
             }
         }
         ui.add_space(10.0);
-        ui.label(egui::RichText::new(tr("Break (min)")).small());
+        let break_label = ui.label(egui::RichText::new(tr("Break (min)")).small());
         let mut rest = state.pomo.break_min;
-        if ui.add(egui::DragValue::new(&mut rest).range(1..=180)).changed() {
+        if ui.add(egui::DragValue::new(&mut rest).range(1..=180)).labelled_by(break_label.id).changed() {
             state.pomo.break_min = rest;
             if !state.pomo.countdown.is_running() && state.pomo.phase == PomoPhase::Break {
                 state.pomo.load_phase();
@@ -711,7 +721,7 @@ fn alarm_popover(ui: &mut egui::Ui, state: &mut ClockState, alarms: &mut Vec<(St
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clock-alarm-new")).frame(kit::modal_frame(ui.ctx())).show(ui.ctx(), |ui| {
         kit::begin_dialog(ui);
-        ui.set_width(320.0);
+        ui.set_width(kit::dialog_width(ui.ctx(), 320.0));
         ui.heading(tr("Alarms"));
         ui.add_space(12.0);
         // Fileira dos steppers: rótulos ACIMA de cada grupo, os dois números no
@@ -737,7 +747,7 @@ fn alarm_popover(ui: &mut egui::Ui, state: &mut ClockState, alarms: &mut Vec<(St
             }
         });
         ui.add_space(12.0);
-        ui.add(kit::line(&mut state.alarm_label).hint_text(tr("Label")).desired_width(f32::INFINITY));
+        ui.add(kit::line(&mut state.alarm_label).hint_text(tr("Label")).desired_width(f32::INFINITY)).accessible_name(tr("Label"));
         ui.add_space(12.0);
         ui.horizontal(|ui| {
             if kit::pill(ui, tr("Add"), true).clicked() {

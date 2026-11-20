@@ -255,6 +255,14 @@ impl Default for SystemState {
     }
 }
 
+#[cfg(test)]
+impl SystemState {
+    /// Abre a confirmação de finalizar um processo.
+    pub(crate) fn ask_kill(&mut self, pid: u32, name: &str) {
+        self.confirm = Some(Confirm { pid, name: name.to_string() });
+    }
+}
+
 impl SystemState {
     /// Tique do monitor. Chamado no topo do frame com a visibilidade da aba na
     /// mão: fechada, larga os coletores e não pede repaint nenhum.
@@ -652,7 +660,7 @@ fn disks_card(ui: &mut egui::Ui, live: &Live) {
 fn network_card(ui: &mut egui::Ui, live: &Live) {
     let skin = Skin::of(ui);
     let (down, up) = net_deltas(live.nets.as_ref());
-    card_head(ui, tr("Network"), &format!("↓ {} · ↑ {}", format_rate(down as u64), format_rate(up as u64)), skin.accent);
+    card_head(ui, tr("Network"), &format!("⬇ {} · ⬆ {}", format_rate(down as u64), format_rate(up as u64)), skin.accent);
     ui.add_space(6.0);
     sparkline(ui, &live.down_hist, 0.0, skin.accent, SPARK_H_NET);
     ui.add_space(8.0);
@@ -678,9 +686,9 @@ fn adapter_row(ui: &mut egui::Ui, name: &str, down: u64, up: u64, skin: Skin) {
         let label = egui::Label::new(egui::RichText::new(name).small().color(skin.muted)).truncate();
         ui.add_sized(egui::vec2(name_w, 18.0), label).on_hover_text(name);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            kit::badge(ui, &format!("↓ {}", format_rate(down)), skin.text);
+            kit::badge(ui, &format!("⬇ {}", format_rate(down)), skin.text);
             ui.add_space(4.0);
-            kit::badge(ui, &format!("↑ {}", format_rate(up)), skin.text);
+            kit::badge(ui, &format!("⬆ {}", format_rate(up)), skin.text);
         });
     });
 }
@@ -925,9 +933,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut SystemState) -> Outcome {
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .default_width(380.0)
+            .default_width(kit::dialog_width(&ctx, 380.0))
             .show(&ctx, |ui| {
-                ui.set_width(380.0);
+                ui.set_width(kit::dialog_width(&ctx, 380.0));
                 let pid = confirm.pid.to_string();
                 let question = tr("End {name} (PID {pid})?").replace("{name}", &confirm.name).replace("{pid}", &pid);
                 ui.label(question);
