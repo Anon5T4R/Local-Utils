@@ -10,7 +10,7 @@
 
 use md5::Md5;
 use sha2::{Digest, Sha256};
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::clipboard_ui::{civil_parts, copy_new_text, Clock};
 use crate::history::History;
@@ -34,11 +34,11 @@ pub enum DevError {
 }
 
 impl DevError {
-    fn key(self) -> Key {
+    fn key(self) -> &'static str {
         match self {
-            DevError::BadInput => Key::DevBadInput,
-            DevError::BadUtf8 => Key::DevBadUtf8,
-            DevError::BadIso => Key::DevBadIso,
+            DevError::BadInput => tr("invalid input"),
+            DevError::BadUtf8 => tr("not valid UTF-8"),
+            DevError::BadIso => tr("invalid date"),
         }
     }
 }
@@ -274,15 +274,15 @@ pub fn iso_to_local_ms(text: &str) -> Result<i64, DevError> {
 pub struct DevState {
     b64_in: String,
     b64_out: String,
-    b64_error: Option<Key>,
+    b64_error: Option<&'static str>,
     url_in: String,
     url_out: String,
-    url_error: Option<Key>,
+    url_error: Option<&'static str>,
     hash_in: String,
     uuid: String,
     iso_in: String,
     epoch_in: String,
-    ts_error: Option<Key>,
+    ts_error: Option<&'static str>,
 }
 
 /// O que a aba devolve pro app (histórico de clipboard + status do rodapé).
@@ -299,13 +299,13 @@ fn heading(ui: &mut egui::Ui, text: &str) {
 
 /// Linha de resultado: campo somente-leitura + "Copiar" (cria uma entrada Text
 /// nova no histórico de clipboard, o mesmo caminho do recopiar da aba).
-fn output_row(ui: &mut egui::Ui, lang: Lang, value: &str, texts: &mut History, out: &mut Outcome) {
+fn output_row(ui: &mut egui::Ui, value: &str, texts: &mut History, out: &mut Outcome) {
     ui.horizontal(|ui| {
         let mut shown = value.to_string();
         let copy_w = 96.0 + ui.spacing().item_spacing.x;
         ui.add(kit::line(&mut shown).interactive(false).desired_width((ui.available_width() - copy_w).max(80.0)));
-        if !value.is_empty() && kit::pill(ui, i18n::t(lang, Key::CopyValue), false).clicked() {
-            let (changed, status) = copy_new_text(texts, lang, value);
+        if !value.is_empty() && kit::pill(ui, tr("Copy"), false).clicked() {
+            let (changed, status) = copy_new_text(texts, value);
             out.history_changed |= changed;
             out.status = Some(status);
         }
@@ -313,25 +313,25 @@ fn output_row(ui: &mut egui::Ui, lang: Lang, value: &str, texts: &mut History, o
 }
 
 /// Mensagem de erro em vermelho do tema (nada de inglês cru na tela).
-fn error_line(ui: &mut egui::Ui, lang: Lang, key: Key) {
+fn error_line(ui: &mut egui::Ui, key: &'static str) {
     let skin = crate::ui::Skin::of(ui);
-    ui.label(egui::RichText::new(format!("⚠ {}", i18n::t(lang, key))).color(skin.danger));
+    ui.label(egui::RichText::new(format!("⚠ {}", key)).color(skin.danger));
 }
 
 /// Desenha as ferramentas de dev. `texts` é o histórico de clipboard.
-pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut DevState, texts: &mut History) -> Outcome {
+pub fn show(ui: &mut egui::Ui, state: &mut DevState, texts: &mut History) -> Outcome {
     let mut out = Outcome::default();
 
     egui::ScrollArea::vertical().id_salt("dev-scroll").auto_shrink([false, false]).show(ui, |ui| {
         // ── Base64 ───────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::DevBase64));
-        ui.add(kit::line(&mut state.b64_in).hint_text(i18n::t(lang, Key::DevInput)).desired_width(f32::INFINITY));
+        heading(ui, tr("Base64"));
+        ui.add(kit::line(&mut state.b64_in).hint_text(tr("Input")).desired_width(f32::INFINITY));
         ui.horizontal(|ui| {
-            if kit::pill(ui, i18n::t(lang, Key::DevEncode), true).clicked() {
+            if kit::pill(ui, tr("Encode"), true).clicked() {
                 state.b64_out = base64_encode(state.b64_in.as_bytes());
                 state.b64_error = None;
             }
-            if kit::pill(ui, i18n::t(lang, Key::DevDecode), false).clicked() {
+            if kit::pill(ui, tr("Decode"), false).clicked() {
                 match base64_decode(&state.b64_in).and_then(|bytes| String::from_utf8(bytes).map_err(|_| DevError::BadUtf8)) {
                     Ok(text) => {
                         state.b64_out = text;
@@ -345,21 +345,21 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut DevState, texts: &mut His
             }
         });
         if let Some(key) = state.b64_error {
-            error_line(ui, lang, key);
+            error_line(ui, key);
         }
-        output_row(ui, lang, &state.b64_out, texts, &mut out);
+        output_row(ui, &state.b64_out, texts, &mut out);
         ui.add_space(10.0);
         ui.separator();
 
         // ── URL ──────────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::DevUrl));
-        ui.add(kit::line(&mut state.url_in).hint_text(i18n::t(lang, Key::DevInput)).desired_width(f32::INFINITY));
+        heading(ui, tr("URL"));
+        ui.add(kit::line(&mut state.url_in).hint_text(tr("Input")).desired_width(f32::INFINITY));
         ui.horizontal(|ui| {
-            if kit::pill(ui, i18n::t(lang, Key::DevEncode), true).clicked() {
+            if kit::pill(ui, tr("Encode"), true).clicked() {
                 state.url_out = url_encode(&state.url_in);
                 state.url_error = None;
             }
-            if kit::pill(ui, i18n::t(lang, Key::DevDecode), false).clicked() {
+            if kit::pill(ui, tr("Decode"), false).clicked() {
                 match url_decode(&state.url_in) {
                     Ok(text) => {
                         state.url_out = text;
@@ -373,44 +373,44 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut DevState, texts: &mut His
             }
         });
         if let Some(key) = state.url_error {
-            error_line(ui, lang, key);
+            error_line(ui, key);
         }
-        output_row(ui, lang, &state.url_out, texts, &mut out);
+        output_row(ui, &state.url_out, texts, &mut out);
         ui.add_space(10.0);
         ui.separator();
 
         // ── Hash ─────────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::DevHash));
-        ui.add(kit::line(&mut state.hash_in).hint_text(i18n::t(lang, Key::DevInput)).desired_width(f32::INFINITY));
+        heading(ui, tr("Hash"));
+        ui.add(kit::line(&mut state.hash_in).hint_text(tr("Input")).desired_width(f32::INFINITY));
         // Duas passadas pequenas por frame: texto de ferramenta é curto.
         let hash = (sha256_hex(&state.hash_in), md5_hex(&state.hash_in));
         ui.label(egui::RichText::new("SHA-256").small().weak());
-        output_row(ui, lang, &hash.0, texts, &mut out);
+        output_row(ui, &hash.0, texts, &mut out);
         ui.label(egui::RichText::new("MD5").small().weak());
-        output_row(ui, lang, &hash.1, texts, &mut out);
+        output_row(ui, &hash.1, texts, &mut out);
         ui.add_space(10.0);
         ui.separator();
 
         // ── UUID ─────────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::DevUuid));
+        heading(ui, tr("UUID v4"));
         if state.uuid.is_empty() {
             state.uuid = uuid_v4();
         }
         ui.horizontal(|ui| {
-            if kit::pill(ui, i18n::t(lang, Key::DevGenerate), true).clicked() {
+            if kit::pill(ui, tr("Generate"), true).clicked() {
                 state.uuid = uuid_v4();
             }
-            ui.label(egui::RichText::new(i18n::t(lang, Key::DevUuidNote)).small().weak());
+            ui.label(egui::RichText::new(tr("unique, but not cryptographic")).small().weak());
         });
-        output_row(ui, lang, &state.uuid, texts, &mut out);
+        output_row(ui, &state.uuid, texts, &mut out);
         ui.add_space(10.0);
         ui.separator();
 
         // ── Timestamp ────────────────────────────────────────────────
-        heading(ui, i18n::t(lang, Key::DevTimestamp));
-        ui.add(kit::line(&mut state.iso_in).hint_text(i18n::t(lang, Key::DevIsoHint)).desired_width(f32::INFINITY));
+        heading(ui, tr("Timestamp"));
+        ui.add(kit::line(&mut state.iso_in).hint_text(tr("ISO date (e.g. 2026-11-04T14:30:00)")).desired_width(f32::INFINITY));
         ui.horizontal(|ui| {
-            if kit::pill(ui, i18n::t(lang, Key::DevToEpoch), true).clicked() {
+            if kit::pill(ui, tr("To epoch"), true).clicked() {
                 // A data digitada é LOCAL; o epoch mostrado é UTC.
                 match iso_to_local_ms(&state.iso_in) {
                     Ok(local_ms) => {
@@ -421,27 +421,27 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut DevState, texts: &mut His
                     Err(e) => state.ts_error = Some(e.key()),
                 }
             }
-            if kit::pill(ui, i18n::t(lang, Key::DevNow), false).clicked() {
+            if kit::pill(ui, tr("Now"), false).clicked() {
                 state.iso_in = epoch_to_iso(Clock::now().local_now_ms());
                 state.ts_error = None;
             }
         });
         ui.add_space(4.0);
-        ui.add(kit::line(&mut state.epoch_in).hint_text(i18n::t(lang, Key::DevEpoch)).desired_width(f32::INFINITY));
+        ui.add(kit::line(&mut state.epoch_in).hint_text(tr("Unix epoch (seconds)")).desired_width(f32::INFINITY));
         ui.horizontal(|ui| {
-            if kit::pill(ui, i18n::t(lang, Key::DevToIso), true).clicked() {
+            if kit::pill(ui, tr("To ISO"), true).clicked() {
                 match state.epoch_in.trim().parse::<i64>() {
                     Ok(seconds) => {
                         let offset = Clock::now().offset_ms();
                         state.iso_in = epoch_to_iso(seconds.saturating_mul(1_000).saturating_add(offset));
                         state.ts_error = None;
                     }
-                    Err(_) => state.ts_error = Some(Key::DevBadInput),
+                    Err(_) => state.ts_error = Some(tr("invalid input")),
                 }
             }
         });
         if let Some(key) = state.ts_error {
-            error_line(ui, lang, key);
+            error_line(ui, key);
         }
     });
 

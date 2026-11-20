@@ -5,12 +5,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 
+use craft_icons::ThemeMode;
 use egui::accesskit::Role;
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use utils_ui::config::Config;
-use utils_ui::i18n::Lang;
-use utils_ui::theme::Appearance;
+use crate::prefs::Prefs;
 
 use super::{Tab, UtilsApp};
 use crate::history::History;
@@ -25,7 +24,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// O app inteiro, mas sem as peças do sistema: histórico vazio, sem monitor, sem bandeja, sem atalho global.
-fn app(name: &str, cfg: Config) -> UtilsApp {
+fn app(name: &str, cfg: Prefs) -> UtilsApp {
     let (_tx, tray_rx) = channel();
     UtilsApp::assemble(
         cfg,
@@ -48,7 +47,8 @@ fn harness_sized(app: UtilsApp, width: f32) -> Harness<'static, UtilsApp> {
         .build_ui_state(
             move |ui, app: &mut UtilsApp| {
                 egui_extras::install_image_loaders(ui.ctx());
-                utils_ui::theme::apply(ui.ctx(), app.cfg.theme);
+                crate::i18n::set_language(&app.cfg.language);
+                crate::theme::apply(ui.ctx(), app.cfg.mode());
                 app.frame(ui);
             },
             app,
@@ -119,17 +119,17 @@ fn shot(harness: &mut Harness<'_, UtilsApp>, name: &str) {
 /// O botão de tema da barra gira Automático -> Claro -> Escuro -> Automático e grava a escolha.
 #[test]
 fn the_theme_button_cycles_the_three_modes() {
-    let mut harness = harness(app("theme", Config::default()));
-    assert_eq!(harness.state().cfg.theme, Appearance::System);
+    let mut harness = harness(app("theme", Prefs::default()));
+    assert_eq!(harness.state().cfg.mode(), ThemeMode::System);
     click_bar(&mut harness, THEME);
-    assert_eq!(harness.state().cfg.theme, Appearance::Light);
+    assert_eq!(harness.state().cfg.mode(), ThemeMode::Light);
     click_bar(&mut harness, THEME);
-    assert_eq!(harness.state().cfg.theme, Appearance::Dark);
+    assert_eq!(harness.state().cfg.mode(), ThemeMode::Dark);
     click_bar(&mut harness, THEME);
-    assert_eq!(harness.state().cfg.theme, Appearance::System);
+    assert_eq!(harness.state().cfg.mode(), ThemeMode::System);
     // Cada troca foi gravada: o arquivo de teste (nunca o real) guarda o modo atual.
-    let saved = utils_ui::config::load_from(&harness.state().config_file());
-    assert_eq!(saved.theme, Appearance::System);
+    let saved = crate::prefs::load_from(&harness.state().config_file());
+    assert_eq!(saved.mode(), ThemeMode::System);
 }
 
 /// Uma preferência de tema gravada por versões antigas (id que a casca não conhece) abre no Automático.
@@ -139,15 +139,15 @@ fn an_old_theme_id_falls_back_to_automatic() {
     std::fs::create_dir_all(&dir).expect("temp dir");
     let file = dir.join("config.json");
     std::fs::write(&file, r#"{"theme":"PunkPrincess","lang":"En"}"#).expect("write config");
-    let cfg = utils_ui::config::load_from(&file);
-    assert_eq!(cfg.theme, Appearance::System);
-    assert_eq!(cfg.lang, Lang::En);
+    let cfg = crate::prefs::load_from(&file);
+    assert_eq!(cfg.mode(), ThemeMode::System);
+    assert_eq!(cfg.language, "en");
 }
 
 /// A engrenagem abre as Configurações; lá o tema vira pelas três opções e o idioma troca.
 #[test]
 fn the_gear_opens_settings_with_language_and_theme() {
-    let mut harness = harness(app("gear", Config { theme: Appearance::Dark, lang: Lang::En, ..Config::default() }));
+    let mut harness = harness(app("gear", Prefs::new("en", ThemeMode::Dark)));
     click_bar(&mut harness, GEAR);
     // O diálogo se centraliza depois da primeira medida: espera o layout assentar antes de ler posições.
     harness.run_steps(4);
@@ -156,16 +156,16 @@ fn the_gear_opens_settings_with_language_and_theme() {
     shot(&mut harness, "settings-dark");
     let light = harness.get_by_label("Light").rect();
     click_at(&mut harness, light.center());
-    assert_eq!(harness.state().cfg.theme, Appearance::Light);
+    assert_eq!(harness.state().cfg.mode(), ThemeMode::Light);
     let automatic = harness.get_by_label("Automatic").rect();
     click_at(&mut harness, automatic.center());
-    assert_eq!(harness.state().cfg.theme, Appearance::System);
+    assert_eq!(harness.state().cfg.mode(), ThemeMode::System);
     // O idioma sai da barra e mora aqui: o combo troca para o português.
     harness.get_by_role(Role::ComboBox).click();
     harness.run_steps(2);
-    harness.get_by_label("Português").click();
+    harness.get_by_label("Português (Brasil)").click();
     harness.run_steps(2);
-    assert_eq!(harness.state().cfg.lang, Lang::Pt);
+    assert_eq!(harness.state().cfg.language, "pt-br");
     harness.get_by_label("Sobre o Local Utils");
     // Esc fecha a janela.
     press(&mut harness, egui::Key::Escape, egui::Modifiers::NONE);
@@ -175,7 +175,7 @@ fn the_gear_opens_settings_with_language_and_theme() {
 /// A lupa e o Ctrl+K abrem a paleta; Enter roda o comando escolhido.
 #[test]
 fn the_search_icon_and_ctrl_k_open_the_palette_and_run_a_command() {
-    let mut harness = harness(app("palette", Config { theme: Appearance::Light, lang: Lang::En, ..Config::default() }));
+    let mut harness = harness(app("palette", Prefs::new("en", ThemeMode::Light)));
     assert!(!harness.state().palette.is_open());
     click_bar(&mut harness, SEARCH);
     assert!(harness.state().palette.is_open());
@@ -190,20 +190,20 @@ fn the_search_icon_and_ctrl_k_open_the_palette_and_run_a_command() {
 /// Um comando da paleta troca de aba e outro abre uma sub-aba de Ferramentas.
 #[test]
 fn palette_commands_open_tabs_and_tools() {
-    let mut harness = harness(app("tabs", Config { theme: Appearance::Dark, lang: Lang::En, ..Config::default() }));
+    let mut harness = harness(app("tabs", Prefs::new("en", ThemeMode::Dark)));
     assert!(harness.state().tab == Tab::Clipboard);
     run_palette(&mut harness, "color");
     assert!(harness.state().tab == Tab::Cor);
     run_palette(&mut harness, "calculator");
     assert!(harness.state().tab == Tab::Tools);
     run_palette(&mut harness, "Theme: Dark");
-    assert_eq!(harness.state().cfg.theme, Appearance::Dark);
+    assert_eq!(harness.state().cfg.mode(), ThemeMode::Dark);
 }
 
 /// "Exit" na paleta pede o encerramento (o quadro seguinte responde com Close).
 #[test]
 fn exit_in_the_palette_asks_to_quit() {
-    let mut harness = harness(app("exit", Config { theme: Appearance::Dark, lang: Lang::En, ..Config::default() }));
+    let mut harness = harness(app("exit", Prefs::new("en", ThemeMode::Dark)));
     run_palette(&mut harness, "exit");
     // O pedido já foi atendido no quadro seguinte: o flag volta a falso e o fechamento real foi liberado.
     harness.run_steps(2);
@@ -213,7 +213,7 @@ fn exit_in_the_palette_asks_to_quit() {
 /// Os comandos que dependem do sistema só ficam ligados onde existem (captura e conta-gotas: Windows).
 #[test]
 fn system_commands_follow_the_platform() {
-    let app = app("platform", Config::default());
+    let app = app("platform", Prefs::default());
     for command in app.commands() {
         if matches!(command.id.as_str(), "capture.screen" | "color.pick") {
             assert_eq!(command.enabled, cfg!(windows), "{}", command.id);
@@ -226,7 +226,7 @@ fn system_commands_follow_the_platform() {
 /// Com a paleta aberta a lista do Clipboard fica quieta: o Delete não remove a entrada com foco.
 #[test]
 fn the_clipboard_list_stays_quiet_while_the_palette_is_open() {
-    let mut app = app("quiet", Config { theme: Appearance::Light, lang: Lang::En, ..Config::default() });
+    let mut app = app("quiet", Prefs::new("en", ThemeMode::Light));
     app.history.push(crate::history::Entry {
         id: 1,
         ts_ms: 1,
@@ -248,7 +248,7 @@ fn the_clipboard_list_stays_quiet_while_the_palette_is_open() {
 #[test]
 fn the_top_bar_buttons_fit_narrow_and_wide_windows() {
     for width in [NARROW, 600.0, 1100.0] {
-        let mut harness = harness_sized(app("narrow", Config { theme: Appearance::Light, lang: Lang::Pt, ..Config::default() }), width);
+        let mut harness = harness_sized(app("narrow", Prefs::new("pt-br", ThemeMode::Light)), width);
         harness.run_steps(2);
         let rects = bar_buttons(&harness);
         assert_eq!(rects.len(), 3, "{width}: a barra tem lupa, tema e engrenagem: {rects:?}");
@@ -263,8 +263,8 @@ fn the_top_bar_buttons_fit_narrow_and_wide_windows() {
 #[test]
 fn review_shots() {
     for (width, label) in [(NARROW, "340"), (1100.0, "1100")] {
-        for (appearance, name) in [(Appearance::Light, "light"), (Appearance::Dark, "dark")] {
-            let mut harness = harness_sized(app("shots", Config { theme: appearance, lang: Lang::En, ..Config::default() }), width);
+        for (mode, name) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
+            let mut harness = harness_sized(app("shots", Prefs::new("en", mode)), width);
             harness.run_steps(2);
             shot(&mut harness, &format!("bar-{name}-{label}"));
             click_bar(&mut harness, GEAR);

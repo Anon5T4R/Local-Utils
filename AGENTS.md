@@ -1,7 +1,8 @@
 # AGENTS.md — Local Utils
 
 Utilitários do cotidiano 100% locais e offline, parte da suíte Local do João.
-Rust puro + egui, app single-crate com a UI comum em `utils-ui`. Sem conta, sem
+Rust puro + egui, app single-crate: idioma (`src/i18n.rs`), preferências (`src/prefs.rs`) e tema
+(`src/theme.rs`) moram no próprio app. Sem conta, sem
 telemetria, sem dependência de servidores de terceiros.
 
 ## Regras
@@ -22,7 +23,8 @@ telemetria, sem dependência de servidores de terceiros.
 ## Estrutura
 - `src/` — app (boot, abas, updater; `src/pickers.rs`: seletor nativo async via
   rfd + pollster, portal XDG no Linux)
-- `utils-ui/` — tema, i18n e config comuns (`settings_ui`)
+- `src/i18n.rs` (craft-i18n, `tr("English")`, idioma por thread), `src/prefs.rs` (config.json: idioma, tema, atalhos,
+  alarmes, notas) e `src/theme.rs` (tokens + `craft_icons::ThemeMode`); `src/app/shell.rs` é a casca da suíte
 - `i18n/locales/<code>/localutils.tsv` — catálogos TSV (EN é a fonte)
 - `icons/` — ícones do app (master PNG 1024)
 - `assets/app-icon/hicolor/` — árvore de ícones commitada (gerada por `packaging/icons.sh`)

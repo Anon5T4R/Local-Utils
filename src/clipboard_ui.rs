@@ -10,7 +10,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use eframe::egui;
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::clipboard;
 use crate::history::{Entry, History, Kind};
@@ -47,13 +47,13 @@ impl KindFilter {
     /// Todas as pills, na ordem da barra.
     const ALL: [KindFilter; 5] = [KindFilter::All, KindFilter::Text, KindFilter::Images, KindFilter::Files, KindFilter::Rich];
 
-    fn label_key(self) -> Key {
+    fn label(self) -> &'static str {
         match self {
-            KindFilter::All => Key::FilterAll,
-            KindFilter::Text => Key::FilterText,
-            KindFilter::Images => Key::FilterImages,
-            KindFilter::Files => Key::FilterFiles,
-            KindFilter::Rich => Key::FilterRich,
+            KindFilter::All => tr("All"),
+            KindFilter::Text => tr("Text"),
+            KindFilter::Images => tr("Images"),
+            KindFilter::Files => tr("Files"),
+            KindFilter::Rich => tr("Rich"),
         }
     }
 
@@ -174,12 +174,12 @@ struct Actions {
     ocr: Option<u128>,
     remove: Option<u128>,
     /// Aviso a mostrar no rodapé em vez de executar a ação (ex.: QR comprido).
-    warn: Option<Key>,
+    warn: Option<&'static str>,
 }
 
 /// Desenha a aba inteira. Devolve o que o app precisa aplicar (gravar o JSON e
 /// mostrar um status).
-pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut ClipboardUiState) -> Outcome {
+pub fn show(ui: &mut egui::Ui, history: &mut History, state: &mut ClipboardUiState) -> Outcome {
     let mut out = Outcome::default();
     let ctx = ui.ctx().clone();
     let clock = Clock::now();
@@ -188,11 +188,11 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     ui.horizontal(|ui| {
         let clear_w = if state.search.is_empty() { 0.0 } else { 28.0 };
         let width = (ui.available_width() - clear_w).max(120.0);
-        let resp = ui.add(kit::line(&mut state.search).hint_text(i18n::t(lang, Key::Search)).desired_width(width));
+        let resp = ui.add(kit::line(&mut state.search).hint_text(tr("Search")).desired_width(width));
         state.search_focused = resp.has_focus();
         // "×" (U+00D7, presente nas fontes) limpa a busca; o "✕" (U+2715)
         // saía vazio no Ubuntu/Hack.
-        if !state.search.is_empty() && kit::ghost(ui, "×").on_hover_text(i18n::tr(lang, "Clear search")).clicked() {
+        if !state.search.is_empty() && kit::ghost(ui, "×").on_hover_text(tr("Clear search")).clicked() {
             state.search.clear();
         }
     });
@@ -201,7 +201,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     // ── filtro por tipo (pills) + "Limpar" ────────────────────────────
     ui.horizontal(|ui| {
         for filter in KindFilter::ALL {
-            if kit::pill(ui, i18n::t(lang, filter.label_key()), state.filter == filter).clicked() {
+            if kit::pill(ui, filter.label(), state.filter == filter).clicked() {
                 state.filter = filter;
             }
         }
@@ -209,7 +209,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         // pro modal que confirma). Encostado à direita da MESMA linha dos
         // filtros; o modal confirma antes de mexer.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let clear = kit::ghost_action(ui, i18n::t(lang, Key::ClearHistory)).on_hover_text(i18n::t(lang, Key::ClearExplain));
+            let clear = kit::ghost_action(ui, tr("Clear")).on_hover_text(tr("Pinned items are kept"));
             if clear.clicked() {
                 state.confirm_clear = true;
             }
@@ -279,7 +279,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         let out = area.show_rows(ui, ROW_H, ids.len(), |ui, range| {
             for i in range {
                 let Some(entry) = ids.get(i).and_then(|idx| history.entries().get(*idx)) else { continue };
-                entry_row(ui, lang, &clock, entry, focus == Some(entry.id), thumbs, &mut actions);
+                entry_row(ui, &clock, entry, focus == Some(entry.id), thumbs, &mut actions);
             }
         });
         state.scroll_offset = out.state.clamped_offset().y;
@@ -288,9 +288,9 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         // Empty-state: área central morta não ajuda ninguém — o usuário sem
         // histórico precisa saber o que o app faz, e quem busca sem achar
         // precisa saber que o filtro é o culpado.
-        let msg = if history.entries().is_empty() { Key::EmptyList } else { Key::NoResults };
+        let msg = if history.entries().is_empty() { tr("Nothing copied yet") } else { tr("Nothing found") };
         ui.centered_and_justified(|ui| {
-            ui.label(egui::RichText::new(i18n::t(lang, msg)).weak());
+            ui.label(egui::RichText::new(msg).weak());
         });
     }
 
@@ -299,7 +299,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         state.focus = Some(id);
     }
     if let Some(id) = actions.copy {
-        let msg = recopy(history, lang, id);
+        let msg = recopy(history, id);
         if msg.is_some() {
             state.focus = Some(id);
         }
@@ -309,7 +309,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         history.toggle_pin(id);
         out.changed = true;
         let pinned = history.entries().iter().find(|e| e.id == id).is_some_and(|e| e.pinned);
-        out.status = Some(i18n::t(lang, if pinned { Key::Pinned } else { Key::Unpinned }).to_string());
+        out.status = Some((if pinned { tr("Pinned") } else { tr("Unpinned") }).to_string());
     }
     // Só Texto edita: HTML/RTF são fragmentos com marcação, editá-los como
     // texto puro corromperia o formato.
@@ -323,7 +323,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
         out.ocr = Some(id);
     }
     if let Some(key) = actions.warn {
-        out.status = Some(i18n::t(lang, key).to_string());
+        out.status = Some(key.to_string());
     }
     if let Some(id) = actions.remove {
         history.remove(id);
@@ -332,10 +332,10 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
     }
 
     // ── diálogos (por cima da lista) ──────────────────────────────────
-    edit_modal(&ctx, lang, state, history, &mut out);
-    qr_modal(&ctx, lang, state);
-    ocr_modal(&ctx, lang, state, history, &mut out);
-    clear_modal(&ctx, lang, state, history, &mut out);
+    edit_modal(&ctx, state, history, &mut out);
+    qr_modal(&ctx, state);
+    ocr_modal(&ctx, state, history, &mut out);
+    clear_modal(&ctx, state, history, &mut out);
 
     // Mutação (pin/remover/editar) pode mudar o que casa com a busca/filtro
     // sem mexer no tamanho da lista: força o recálculo no próximo frame.
@@ -347,11 +347,11 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, history: &mut History, state: &mut Cl
 }
 
 /// Recopia a entrada e devolve a mensagem do rodapé (✓ ou ⚠ + motivo do SO).
-fn recopy(history: &History, lang: Lang, id: u128) -> Option<String> {
+fn recopy(history: &History, id: u128) -> Option<String> {
     let entry = history.entries().iter().find(|e| e.id == id)?;
     Some(match clipboard::write_back(entry) {
-        Ok(()) => i18n::t(lang, Key::CopiedOk).to_string(),
-        Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed)),
+        Ok(()) => tr("Copied ✓").to_string(),
+        Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
     })
 }
 
@@ -361,7 +361,7 @@ fn recopy(history: &History, lang: Lang, id: u128) -> Option<String> {
 /// de novo, com entrada própria na lista.
 ///
 /// Devolve `(o histórico mudou, status pronto pro rodapé)`.
-pub(crate) fn copy_new_text(history: &mut History, lang: Lang, text: &str) -> (bool, String) {
+pub(crate) fn copy_new_text(history: &mut History, text: &str) -> (bool, String) {
     let entry = Entry {
         id: crate::history::new_id(),
         ts_ms: crate::history::now_ms(),
@@ -374,8 +374,8 @@ pub(crate) fn copy_new_text(history: &mut History, lang: Lang, text: &str) -> (b
     };
     history.push(entry.clone());
     let status = match clipboard::write_back(&entry) {
-        Ok(()) => i18n::t(lang, Key::CopiedOk).to_string(),
-        Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed)),
+        Ok(()) => tr("Copied ✓").to_string(),
+        Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
     };
     (true, status)
 }
@@ -405,7 +405,7 @@ fn qr_source(entry: &Entry) -> Option<&str> {
 }
 
 /// Uma linha da lista. Altura fixa: o `show_rows` só desenha as visíveis.
-fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focused: bool, thumbs: &mut ThumbCache, actions: &mut Actions) {
+fn entry_row(ui: &mut egui::Ui, clock: &Clock, entry: &Entry, focused: bool, thumbs: &mut ThumbCache, actions: &mut Actions) {
     let skin = Skin::of(ui);
     let width = ui.available_width().max(1.0);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, ROW_H), egui::Sense::click());
@@ -413,7 +413,7 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
         actions.focus = Some(entry.id);
     }
     // Clique direito: as mesmas ações das ghost buttons (descoberta).
-    let _ = resp.context_menu(|ui| row_menu(ui, lang, entry, actions));
+    let _ = resp.context_menu(|ui| row_menu(ui, entry, actions));
 
     // Fundo: foco > hover > nada (o "ghost" da suíte — a lista fica limpa).
     let bg = if focused {
@@ -446,9 +446,9 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
         ui.spacing_mut().item_spacing.y = 2.0;
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(kind_label(lang, entry.kind)).small().color(skin.muted));
+            ui.label(egui::RichText::new(kind_label(entry.kind)).small().color(skin.muted));
             ui.label(egui::RichText::new("·").small().color(skin.muted));
-            ui.label(egui::RichText::new(clock.stamp(lang, entry.ts_ms)).small().color(skin.muted));
+            ui.label(egui::RichText::new(clock.stamp(entry.ts_ms)).small().color(skin.muted));
         });
         ui.add(egui::Label::new(egui::RichText::new(preview_text(entry)).color(skin.text)).truncate());
     });
@@ -460,14 +460,14 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
         // Preenchida + accent quando fixada; contorno em tinta forte (bem mais
         // legível que o `muted` de antes) quando não.
         let ink = if entry.pinned { skin.accent } else { skin.text.gamma_multiply(0.75) };
-        let tip = if entry.pinned { Key::Unpin } else { Key::Pin };
-        if kit::ghost_ink(ui, star, ink).on_hover_text(i18n::t(lang, tip)).clicked() {
+        let tip = if entry.pinned { tr("Unpin") } else { tr("Pin") };
+        if kit::ghost_ink(ui, star, ink).on_hover_text(tip).clicked() {
             actions.pin = Some(entry.id);
         }
         if !(resp.hovered() || focused) {
             return;
         }
-        if craft_icons::ui::button(ui, craft_icons::Icon::Delete, i18n::t(lang, Key::Remove)).clicked() {
+        if craft_icons::ui::button(ui, craft_icons::Icon::Delete, tr("Remove")).clicked() {
             actions.remove = Some(entry.id);
         }
         if let Some(text) = qr_source(entry) {
@@ -476,24 +476,24 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
             // verdade, o egui não mostra tooltip.
             let too_long = text.chars().count() > QR_MAX_CHARS;
             let ink = if too_long { skin.muted.gamma_multiply(0.5) } else { skin.muted };
-            let tip = if too_long { Key::QrTooLong } else { Key::QRCode };
+            let tip = if too_long { tr("Text too long for a QR code (~1000 characters)") } else { tr("QR code") };
             // "QR" por extenso: o glifo ▦ (U+25A6) não existe no Ubuntu e
             // renderizava vazio (mesma classe de bug do ✕ do popup).
-            if kit::ghost_ink(ui, "QR", ink).on_hover_text(i18n::t(lang, tip)).clicked() {
+            if kit::ghost_ink(ui, "QR", ink).on_hover_text(tip).clicked() {
                 if too_long {
-                    actions.warn = Some(Key::QrTooLong);
+                    actions.warn = Some(tr("Text too long for a QR code (~1000 characters)"));
                 } else {
                     actions.qr = Some(entry.id);
                 }
             }
         }
-        if entry.kind == Kind::Text && kit::ghost(ui, "✏").on_hover_text(i18n::t(lang, Key::Edit)).clicked() {
+        if entry.kind == Kind::Text && kit::ghost(ui, "✏").on_hover_text(tr("Edit")).clicked() {
             actions.edit = Some(entry.id);
         }
         // OCR só faz sentido em imagem e só existe no Windows (motores do SO).
         #[cfg(windows)]
         {
-            if entry.kind == Kind::Image && kit::ghost(ui, "OCR").on_hover_text(i18n::t(lang, Key::OcrButton)).clicked() {
+            if entry.kind == Kind::Image && kit::ghost(ui, "OCR").on_hover_text(tr("OCR")).clicked() {
                 actions.ocr = Some(entry.id);
             }
         }
@@ -501,20 +501,20 @@ fn entry_row(ui: &mut egui::Ui, lang: Lang, clock: &Clock, entry: &Entry, focuse
 }
 
 /// Menu de contexto da linha (clique direito).
-fn row_menu(ui: &mut egui::Ui, lang: Lang, entry: &Entry, actions: &mut Actions) {
-    if ui.button(i18n::t(lang, Key::CopyAgain)).clicked() {
+fn row_menu(ui: &mut egui::Ui, entry: &Entry, actions: &mut Actions) {
+    if ui.button(tr("Copy again")).clicked() {
         actions.copy = Some(entry.id);
         ui.close();
     }
-    if entry.kind == Kind::Text && ui.button(i18n::t(lang, Key::Edit)).clicked() {
+    if entry.kind == Kind::Text && ui.button(tr("Edit")).clicked() {
         actions.edit = Some(entry.id);
         ui.close();
     }
-    if qr_source(entry).is_some() && ui.button(i18n::t(lang, Key::QRCode)).clicked() {
+    if qr_source(entry).is_some() && ui.button(tr("QR code")).clicked() {
         actions.qr = Some(entry.id);
         ui.close();
     }
-    if ui.button(i18n::t(lang, Key::Remove)).clicked() {
+    if ui.button(tr("Remove")).clicked() {
         actions.remove = Some(entry.id);
         ui.close();
     }
@@ -558,15 +558,15 @@ fn paint_thumb(ui: &egui::Ui, rect: egui::Rect, entry: &Entry, thumbs: &mut Thum
 
 /// Rótulo traduzido do tipo (linha de cima da entrada). Compartilhado com o
 /// popup rápido, que desenha a linha em versão slim.
-pub(crate) fn kind_label(lang: Lang, kind: Kind) -> &'static str {
+pub(crate) fn kind_label(kind: Kind) -> &'static str {
     let key = match kind {
-        Kind::Text => Key::TypeText,
-        Kind::Html => Key::TypeHtml,
-        Kind::Rtf => Key::TypeRtf,
-        Kind::Image => Key::TypeImage,
-        Kind::Files => Key::TypeFiles,
+        Kind::Text => tr("Plain text"),
+        Kind::Html => tr("HTML"),
+        Kind::Rtf => tr("RTF"),
+        Kind::Image => tr("Image"),
+        Kind::Files => tr("Copied files"),
     };
-    i18n::t(lang, key)
+    key
 }
 
 /// Nome de um caminho copiado (sem a pasta).
@@ -644,20 +644,20 @@ impl Clock {
     }
 
     /// Carimbo relativo: agora / H:mm / ontem / dd/mm.
-    pub(crate) fn stamp(&self, lang: Lang, ts_ms: u64) -> String {
+    pub(crate) fn stamp(&self, ts_ms: u64) -> String {
         let ts = i64::try_from(ts_ms).unwrap_or(0).saturating_add(self.offset_ms);
         let (y, m, d, hh, mm) = civil_parts(ts);
         let (ny, nm, nd, _, _) = civil_parts(self.now_local_ms);
         if (y, m, d) == (ny, nm, nd) {
             if self.now_local_ms.saturating_sub(ts) < 60_000 {
-                return i18n::t(lang, Key::TsNow).to_string();
+                return tr("now").to_string();
             }
-            return i18n::t(lang, Key::TsTime).replace("{h}", &hh.to_string()).replace("{mm}", &format!("{mm:02}"));
+            return tr("{h}:{mm}").replace("{h}", &hh.to_string()).replace("{mm}", &format!("{mm:02}"));
         }
         if days_of(ts).saturating_add(1) == days_of(self.now_local_ms) {
-            return i18n::t(lang, Key::TsYesterday).to_string();
+            return tr("yesterday").to_string();
         }
-        i18n::t(lang, Key::TsDate).replace("{d}", &format!("{d:02}")).replace("{month}", &format!("{m:02}"))
+        tr("{d}/{month}").replace("{d}", &format!("{d:02}")).replace("{month}", &format!("{m:02}"))
     }
 }
 
@@ -757,7 +757,7 @@ fn decode_thumb(ctx: &egui::Context, id: u128, png: &[u8]) -> Option<egui::Textu
 
 /// Diálogo de edição do texto. Salvar só mexe no histórico: recopiar é ação
 /// explícita (o usuário pode estar editando justamente pra não recopiar).
-fn edit_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
+fn edit_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
     // O rascunho sai do estado enquanto o modal está aberto (o app não pode
     // segurar um `&mut` enquanto a UI roda) e volta no fim do frame.
     let Some(mut draft) = state.edit.take() else { return };
@@ -766,7 +766,7 @@ fn edit_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, his
     let resp = egui::Modal::new(egui::Id::unique("clip-edit")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
         ui.set_width(440.0);
-        ui.heading(i18n::t(lang, Key::Edit));
+        ui.heading(tr("Edit"));
         ui.add_space(10.0);
         egui::ScrollArea::vertical().id_salt("clip-edit-scroll").max_height(320.0).show(ui, |ui| {
             ui.add(kit::block(&mut draft.text).desired_width(400.0).desired_rows(10));
@@ -774,10 +774,10 @@ fn edit_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, his
         ui.add_space(12.0);
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if kit::pill(ui, i18n::t(lang, Key::Save), true).clicked() {
+                if kit::pill(ui, tr("Save"), true).clicked() {
                     save = true;
                 }
-                if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                if kit::pill(ui, tr("Cancel"), false).clicked() {
                     cancel = true;
                 }
             });
@@ -794,22 +794,22 @@ fn edit_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, his
 }
 
 /// Diálogo do QR: a matriz é desenhada como retângulos (sem dep de imagem).
-fn qr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState) {
+fn qr_modal(ctx: &egui::Context, state: &mut ClipboardUiState) {
     let Some(text) = state.qr.take() else { return };
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clip-qr")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
         ui.set_width(QR_SIZE + 40.0);
-        ui.heading(i18n::t(lang, Key::QRCode));
+        ui.heading(tr("QR code"));
         ui.add_space(10.0);
-        draw_qr(ui, lang, &text);
+        draw_qr(ui, &text);
         ui.add_space(10.0);
         // O começo do conteúdo em texto, pra conferir que é o item certo.
         ui.add(egui::Label::new(egui::RichText::new(text.lines().next().unwrap_or_default()).small().weak()).truncate());
         ui.add_space(12.0);
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                if kit::pill(ui, tr("Cancel"), false).clicked() {
                     cancel = true;
                 }
             });
@@ -823,14 +823,14 @@ fn qr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState) {
 /// Diálogo do OCR: o texto que o motor do Windows leu da imagem. "Copiar
 /// texto" grava o texto como uma entrada NOVA do histórico (é o resultado que o
 /// usuário quer reusar) e já o põe no clipboard.
-fn ocr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
+fn ocr_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
     let Some(dialog) = state.ocr.take() else { return };
     let mut copy = false;
     let mut cancel = false;
     let resp = egui::Modal::new(egui::Id::unique("clip-ocr")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
         ui.set_width(460.0);
-        ui.heading(i18n::t(lang, Key::OcrButton));
+        ui.heading(tr("OCR"));
         ui.add_space(10.0);
         egui::ScrollArea::vertical().id_salt("clip-ocr-scroll").max_height(320.0).show(ui, |ui| {
             // Read-only de verdade: o texto lido é resultado, não rascunho —
@@ -841,10 +841,10 @@ fn ocr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, hist
         ui.add_space(12.0);
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if kit::pill(ui, i18n::t(lang, Key::CopyText), true).clicked() {
+                if kit::pill(ui, tr("Copy text"), true).clicked() {
                     copy = true;
                 }
-                if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                if kit::pill(ui, tr("Cancel"), false).clicked() {
                     cancel = true;
                 }
             });
@@ -866,8 +866,8 @@ fn ocr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, hist
         history.push(entry.clone());
         out.changed = true;
         out.status = Some(match clipboard::write_back(&entry) {
-            Ok(()) => i18n::t(lang, Key::CopiedOk).to_string(),
-            Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed)),
+            Ok(()) => tr("Copied ✓").to_string(),
+            Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
         });
     } else if !(cancel || resp.should_close()) {
         state.ocr = Some(dialog);
@@ -876,7 +876,7 @@ fn ocr_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, hist
 
 /// Confirmação do "Limpar": só o histórico NÃO fixado sai; as entradas fixadas
 /// ficam (o modal diz isso antes de o usuário confirmar).
-fn clear_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
+fn clear_modal(ctx: &egui::Context, state: &mut ClipboardUiState, history: &mut History, out: &mut Outcome) {
     if !state.confirm_clear {
         return;
     }
@@ -885,16 +885,16 @@ fn clear_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, hi
     let resp = egui::Modal::new(egui::Id::unique("clip-clear")).frame(kit::modal_frame(ctx)).show(ctx, |ui| {
         kit::begin_dialog(ui);
         ui.set_width(360.0);
-        ui.heading(i18n::t(lang, Key::ClearAll));
+        ui.heading(tr("Clear all"));
         ui.add_space(10.0);
-        ui.label(i18n::t(lang, Key::ClearExplain));
+        ui.label(tr("Pinned items are kept"));
         ui.add_space(14.0);
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if kit::pill_danger(ui, i18n::t(lang, Key::ClearAll)).clicked() {
+                if kit::pill_danger(ui, tr("Clear all")).clicked() {
                     confirm = true;
                 }
-                if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                if kit::pill(ui, tr("Cancel"), false).clicked() {
                     cancel = true;
                 }
             });
@@ -905,7 +905,7 @@ fn clear_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, hi
         out.changed = true;
         // O foco pode ter ficado numa entrada que acabou de sair da lista.
         state.focus = None;
-        out.status = Some(i18n::t(lang, Key::HistoryCleared).to_string());
+        out.status = Some(tr("history cleared").to_string());
         state.confirm_clear = false;
     } else if cancel || resp.should_close() {
         state.confirm_clear = false;
@@ -914,12 +914,12 @@ fn clear_modal(ctx: &egui::Context, lang: Lang, state: &mut ClipboardUiState, hi
 
 /// Desenha a matriz do QR (preto sobre branco: as duas cores são do CÓDIGO, não
 /// do tema — o leitor precisa de contraste puro).
-fn draw_qr(ui: &mut egui::Ui, lang: Lang, text: &str) {
+fn draw_qr(ui: &mut egui::Ui, text: &str) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(QR_SIZE, QR_SIZE), egui::Sense::hover());
     ui.painter().rect_filled(rect, egui::CornerRadius::same(6), egui::Color32::WHITE);
     let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else {
         let font = egui::TextStyle::Body.resolve(ui.style());
-        let msg = i18n::t(lang, Key::QrFailed);
+        let msg = tr("Could not generate the QR code");
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, msg, font, egui::Color32::from_gray(60));
         return;
     };

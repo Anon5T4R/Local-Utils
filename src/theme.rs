@@ -1,76 +1,16 @@
-//! Tema no padrão storytold (molde local-office): `Appearance` (System/Light/Dark,
-//! seguindo o sistema) + `Tokens` (as cores da identidade do app) aplicados por
-//! `set_visuals_of` nos DOIS temas — o egui troca sozinho quando o SO muda.
-//! Widgets nunca hard-codam cor: leem `ui.visuals()` (o `Skin` do app) ou os Tokens.
+//! Tema do Local Utils: o modo da suíte (`craft_icons::ThemeMode` — Automático, Claro, Escuro) + `Tokens` (as
+//! cores da identidade do app) aplicados por `set_visuals_of` nos DOIS temas; no Automático o egui troca sozinho
+//! quando o SO muda. Widgets nunca hard-codam cor: leem `ui.visuals()` (o `Skin` do app) ou os Tokens.
 
+use craft_icons::ThemeMode;
 use egui::Color32;
 
-/// Tema da interface. `System` segue o SO (egui `ThemePreference::System`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(from = "String", into = "String")]
-pub enum Appearance {
-    Light,
-    Dark,
-    #[default]
-    System,
-}
-
-impl Appearance {
-    pub const ALL: [Appearance; 3] = [Appearance::System, Appearance::Light, Appearance::Dark];
-
-    /// O valor persistido no config.json.
-    pub fn code(self) -> &'static str {
-        match self {
-            Appearance::Light => "light",
-            Appearance::Dark => "dark",
-            Appearance::System => "system",
-        }
-    }
-
-    pub fn from_code(code: &str) -> Option<Appearance> {
-        Appearance::ALL.into_iter().find(|a| a.code().eq_ignore_ascii_case(code.trim()))
-    }
-
-    /// Nome no seletor — endônimo/traduzido via i18n no chamador quando couber.
-    pub fn label(self) -> &'static str {
-        match self {
-            Appearance::Light => "Light",
-            Appearance::Dark => "Dark",
-            Appearance::System => "System",
-        }
-    }
-
-    /// Nome no seletor JÁ traduzido (o da UI): o `label()` acima é o código em
-    /// inglês, que serve pra log e comparação — a tela usa este.
-    pub fn label_i18n(self, lang: crate::i18n::Lang) -> &'static str {
-        let key = match self {
-            Appearance::System => crate::i18n::Key::AppearanceSystem,
-            Appearance::Light => crate::i18n::Key::AppearanceLight,
-            Appearance::Dark => crate::i18n::Key::AppearanceDark,
-        };
-        crate::i18n::t(lang, key)
-    }
-
-    /// A preferência do egui: `System` continua automático (não resolve pra fixo).
-    pub fn preference(self) -> egui::ThemePreference {
-        match self {
-            Appearance::Light => egui::ThemePreference::Light,
-            Appearance::Dark => egui::ThemePreference::Dark,
-            Appearance::System => egui::ThemePreference::System,
-        }
-    }
-}
-
-/// Valor salvo desconhecido vira o default em vez de descartar o config inteiro.
-impl From<String> for Appearance {
-    fn from(s: String) -> Self {
-        Appearance::from_code(&s).unwrap_or_default()
-    }
-}
-
-impl From<Appearance> for String {
-    fn from(a: Appearance) -> Self {
-        a.code().to_string()
+/// A preferência do egui de um modo: o Automático continua automático (não resolve para fixo).
+fn preference(mode: ThemeMode) -> egui::ThemePreference {
+    match mode {
+        ThemeMode::Light => egui::ThemePreference::Light,
+        ThemeMode::Dark => egui::ThemePreference::Dark,
+        ThemeMode::System => egui::ThemePreference::System,
     }
 }
 
@@ -85,9 +25,8 @@ pub struct Tokens {
     /// Bordas sutis e fortes.
     pub border: Color32,
     pub border_strong: Color32,
-    /// Texto principal e atenuado.
+    /// Texto principal.
     pub text: Color32,
-    pub text_dim: Color32,
     /// Hover/pressionado sobre superfícies.
     pub hover: Color32,
     pub pressed: Color32,
@@ -106,7 +45,6 @@ impl Tokens {
             border: Color32::from_black_alpha(25),
             border_strong: Color32::from_black_alpha(55),
             text: Color32::from_rgb(0x1f, 0x24, 0x2a),
-            text_dim: Color32::from_black_alpha(140),
             hover: Color32::from_black_alpha(14),
             pressed: Color32::from_black_alpha(28),
             accent: Color32::from_rgb(0x2f, 0x62, 0xb8),
@@ -122,7 +60,6 @@ impl Tokens {
             border: Color32::from_white_alpha(30),
             border_strong: Color32::from_white_alpha(65),
             text: Color32::from_rgb(0xdf, 0xe5, 0xee),
-            text_dim: Color32::from_white_alpha(120),
             hover: Color32::from_white_alpha(16),
             pressed: Color32::from_white_alpha(30),
             accent: Color32::from_rgb(0x6e, 0x9b, 0xf0),
@@ -131,9 +68,9 @@ impl Tokens {
     }
 }
 
-/// Aplica AMBOS os temas (`set_visuals_of` Light e Dark) + a preferência.
-/// Com `Appearance::System` o egui alterna sozinho quando o SO muda.
-pub fn apply(ctx: &egui::Context, appearance: Appearance) {
+/// Aplica AMBOS os temas (`set_visuals_of` Light e Dark) + o modo. No Automático o egui alterna sozinho quando
+/// o SO muda.
+pub fn apply(ctx: &egui::Context, mode: ThemeMode) {
     ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::light()));
     ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::dark()));
     ctx.all_styles_mut(|s| {
@@ -144,7 +81,7 @@ pub fn apply(ctx: &egui::Context, appearance: Appearance) {
     });
     ctx.options_mut(|o| {
         o.fallback_theme = egui::Theme::Dark;
-        o.theme_preference = appearance.preference();
+        o.theme_preference = preference(mode);
     });
 }
 
@@ -190,12 +127,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn appearance_roundtrip_e_default() {
-        for a in Appearance::ALL {
-            let s = a.code();
-            assert_eq!(Appearance::from_code(s), Some(a));
-        }
-        assert_eq!(Appearance::from_code("PunkPrincess"), None);
-        assert_eq!(Appearance::default(), Appearance::System);
+    fn each_mode_maps_to_its_egui_preference() {
+        assert_eq!(preference(ThemeMode::System), egui::ThemePreference::System);
+        assert_eq!(preference(ThemeMode::Light), egui::ThemePreference::Light);
+        assert_eq!(preference(ThemeMode::Dark), egui::ThemePreference::Dark);
     }
 }

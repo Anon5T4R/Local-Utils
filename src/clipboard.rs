@@ -37,7 +37,7 @@ pub enum ClipEvent {
 /// morre (app fechando), a thread percebe no envio e encerra.
 ///
 /// `exclude` é a lista de executáveis ignorados, já persistida no config
-/// (`utils_ui::config::DEFAULT_EXCLUDE` é a lista inicial das opções).
+/// (`crate::prefs::DEFAULT_EXCLUDE` é a lista inicial das opções).
 pub fn spawn_monitor(tx: Sender<ClipEvent>, exclude: Vec<String>) -> Result<std::thread::JoinHandle<()>, String> {
     imp::spawn_monitor(tx, exclude)
 }

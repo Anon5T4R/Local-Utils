@@ -1,12 +1,12 @@
 //! Aba Notas (scratchpad): um campo multilinha gigante, persistido no config
-//! (`utils_ui::config::Config::notes`).
+//! (`Prefs::notes`).
 //!
 //! Autosave DEBOUNCED: digitar marca "sujo" com o instante; o app grava quando o
 //! usuário para por [`AUTOSAVE_MS`] — nenhuma gravação por tecla (o config é um
 //! JSON inteiro). O prazo corre fora da aba também ([`NotesState::due`]): trocar
 //! de aba no meio da digitação não pode deixar o texto só na memória.
 
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::history::now_ms;
 use crate::ui as kit;
@@ -44,12 +44,12 @@ impl NotesState {
 }
 
 /// Desenha a aba Notas. `text` é `cfg.notes` (o campo edita direto).
-pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut NotesState, text: &mut String) {
+pub fn show(ui: &mut egui::Ui, state: &mut NotesState, text: &mut String) {
     let now = now_ms();
     // O campo ocupa tudo menos a linha do rodapé (contagem), que precisa caber
     // na janela mínima do app.
     let height = (ui.available_height() - 26.0).max(120.0);
-    let resp = ui.add_sized(egui::vec2(ui.available_width(), height), kit::block(text).hint_text(i18n::t(lang, Key::NotesHint)));
+    let resp = ui.add_sized(egui::vec2(ui.available_width(), height), kit::block(text).hint_text(tr("Type anything — it saves on its own")));
     if resp.changed() {
         state.touch(now);
     }
@@ -61,8 +61,8 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut NotesState, text: &mut St
     let lines = text.lines().count();
     let counts = format!(
         "{} · {}",
-        i18n::t(lang, Key::NotesChars).replace("{n}", &chars.to_string()),
-        i18n::t(lang, Key::NotesLines).replace("{n}", &lines.to_string())
+        tr("{n} characters").replace("{n}", &chars.to_string()),
+        tr("{n} lines").replace("{n}", &lines.to_string())
     );
     ui.label(egui::RichText::new(counts).small().weak());
 }

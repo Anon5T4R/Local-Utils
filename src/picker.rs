@@ -16,7 +16,7 @@
 use std::sync::{Arc, Mutex};
 
 use eframe::egui;
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::capture::{self, Frozen};
 use crate::clipboard_ui::copy_new_text;
@@ -53,11 +53,11 @@ enum Format {
 }
 
 impl Format {
-    fn key(self) -> Key {
+    fn key(self) -> &'static str {
         match self {
-            Format::Hex => Key::LabelHex,
-            Format::Rgb => Key::LabelRgb,
-            Format::Hsl => Key::LabelHsl,
+            Format::Hex => tr("Hex"),
+            Format::Rgb => tr("RGB"),
+            Format::Hsl => tr("HSL"),
         }
     }
 }
@@ -276,7 +276,7 @@ pub struct Outcome {
 
 /// Desenha a aba Cor. `history` é o histórico de clipboard (copiar um formato
 /// cria entrada Text nova, como o "copiar" das outras ferramentas).
-pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, history: &mut History) -> Outcome {
+pub fn show(ui: &mut egui::Ui, state: &mut PickerState, history: &mut History) -> Outcome {
     let mut out = Outcome::default();
     let skin = Skin::of(ui);
 
@@ -289,9 +289,9 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, history: &mu
         ui.vertical(|ui| {
             ui.label(egui::RichText::new(hex_text(state.current)).size(22.0).strong().color(skin.text));
             ui.add_space(8.0);
-            if kit::pill(ui, i18n::t(lang, Key::CaptureColor), true).clicked() {
+            if kit::pill(ui, tr("Capture from screen"), true).clicked() {
                 if let Err(e) = state.hot.begin(ui.ctx()) {
-                    out.status = Some(format!("⚠ {}: {e}", i18n::t(lang, Key::CaptureFailed)));
+                    out.status = Some(format!("⚠ {}: {e}", tr("Could not capture the screen")));
                 }
             }
         });
@@ -299,11 +299,11 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, history: &mu
     ui.add_space(12.0);
 
     for format in [Format::Hex, Format::Rgb, Format::Hsl] {
-        format_row(ui, lang, state, format, history, &mut out);
+        format_row(ui, state, format, history, &mut out);
     }
 
     ui.add_space(12.0);
-    ui.label(egui::RichText::new(i18n::t(lang, Key::RecentColors)).small().color(skin.muted));
+    ui.label(egui::RichText::new(tr("Recent colors")).small().color(skin.muted));
     ui.add_space(4.0);
 
     // Clique num recente adota a cor DEPOIS do laço: adotar mexe na própria
@@ -327,10 +327,10 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, history: &mu
 }
 
 /// Uma linha de formato: rótulo, campo editável e o botão de copiar.
-fn format_row(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, format: Format, history: &mut History, out: &mut Outcome) {
+fn format_row(ui: &mut egui::Ui, state: &mut PickerState, format: Format, history: &mut History, out: &mut Outcome) {
     let skin = Skin::of(ui);
     ui.horizontal(|ui| {
-        ui.add_sized([40.0, 20.0], egui::Label::new(egui::RichText::new(i18n::t(lang, format.key())).color(skin.muted)));
+        ui.add_sized([40.0, 20.0], egui::Label::new(egui::RichText::new(format.key()).color(skin.muted)));
 
         let field = match format {
             Format::Hex => &mut state.hex,
@@ -365,14 +365,14 @@ fn format_row(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, format: Fo
             out.cfg_changed = true;
         }
 
-        if craft_icons::ui::button(ui, craft_icons::Icon::Copy, i18n::t(lang, Key::CopyValue)).clicked() {
+        if craft_icons::ui::button(ui, craft_icons::Icon::Copy, tr("Copy")).clicked() {
             let text = state.text(format).to_string();
-            let (changed, status) = copy_new_text(history, lang, &text);
+            let (changed, status) = copy_new_text(history, &text);
             out.history_changed |= changed;
             out.status = Some(status);
         }
         if state.bad == Some(format) {
-            ui.label(egui::RichText::new(format!("⚠ {}", i18n::t(lang, Key::InvalidColor))).small().color(skin.danger));
+            ui.label(egui::RichText::new(format!("⚠ {}", tr("invalid color"))).small().color(skin.danger));
         }
     });
 }
@@ -382,7 +382,7 @@ fn format_row(ui: &mut egui::Ui, lang: Lang, state: &mut PickerState, format: Fo
 /// Desenha o overlay do conta-gotas (só quando aberto). O app chama isto a
 /// cada frame enquanto a aba estiver com o overlay de pé; parar de chamar
 /// derruba a janela (mesma mecânica da captura).
-pub fn show_overlay(ctx: &egui::Context, lang: Lang, picker: &PickerState) {
+pub fn show_overlay(ctx: &egui::Context, picker: &PickerState) {
     let (pos, size) = match picker.hot.state.lock() {
         Ok(st) if st.open => match st.frame.as_ref() {
             Some(f) => (f.pos_pt, f.size_pt),
@@ -391,7 +391,7 @@ pub fn show_overlay(ctx: &egui::Context, lang: Lang, picker: &PickerState) {
         _ => return,
     };
     let state = Arc::clone(&picker.hot.state);
-    let hint = i18n::t(lang, Key::PickerHint);
+    let hint = tr("Click to pick a color · Esc cancels");
     let builder = egui::ViewportBuilder::default()
         .with_title(OVERLAY_TITLE)
         .with_position(pos)

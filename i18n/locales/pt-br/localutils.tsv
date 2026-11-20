@@ -1,7 +1,7 @@
+@id	language.name	Português (Brasil)
 	Local Utils	Local Utils
 	Language	Idioma
 	Theme	Tema
-	Forget key	Esquecer chave
 	Check for updates	Verificar atualizações
 	up to date	atualizado
 	Clipboard	Área de transferência
@@ -9,7 +9,6 @@
 	System	Sistema
 	Tools	Ferramentas
 	Scratchpad	Notas
-	Under construction	Em construção
 	{n} items	{n} itens
 	Search	Buscar
 	All	Tudo
@@ -62,7 +61,6 @@
 	Close	Fechar
 	Open Local Utils	Abrir Local Utils
 	Quit	Sair
-	System theme	Sistema
 	Light	Claro
 	Dark	Escuro
 	Pin	Fixar
@@ -115,7 +113,6 @@
 	Pause	Pausar
 	Stop	Parar
 	Reset	Zerar
-	Time (hh:mm:ss)	Tempo (hh:mm:ss)
 	invalid time — use hh:mm:ss	hora inválida — use hh:mm:ss
 	time's up	o tempo acabou
 	Work	Trabalho
@@ -198,7 +195,6 @@
 	Swap	Swap
 	Disks	Discos
 	Network	Rede
-	Battery	Bateria
 	Uptime	Tempo ligado
 	Top processes	Top processos
 	Temperatures	Temperaturas

@@ -5,7 +5,7 @@
 //! relógio é o único que também roda com a aba FECHADA — por isso o
 //! [`ToolsState::tick`] é chamado no topo do frame pelo app, não aqui.
 
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::clipboard_ui::Clock;
 use crate::history::History;
@@ -27,12 +27,12 @@ pub(crate) enum SubTab {
 impl SubTab {
     pub(crate) const ALL: [SubTab; 4] = [SubTab::Clock, SubTab::Calc, SubTab::Units, SubTab::Dev];
 
-    pub(crate) fn label_key(self) -> Key {
+    pub(crate) fn label(self) -> &'static str {
         match self {
-            SubTab::Clock => Key::ToolsClock,
-            SubTab::Calc => Key::CalcTab,
-            SubTab::Units => Key::UnitsTab,
-            SubTab::Dev => Key::DevTab,
+            SubTab::Clock => tr("Clock"),
+            SubTab::Calc => tr("Calculator"),
+            SubTab::Units => tr("Units"),
+            SubTab::Dev => tr("Dev tools"),
         }
     }
 }
@@ -66,8 +66,8 @@ impl ToolsState {
     /// Tique do relógio/alarmes. Chamado no TOPO do frame, com a aba aberta ou
     /// não (o alarme tem que tocar do mesmo jeito). Devolve a mensagem pronta.
     /// `sound_file` é o `.wav` do config (vazio = bipes do SO).
-    pub fn tick(&mut self, lang: Lang, clock: &Clock, alarms: &[(String, String)], sound_file: &str) -> Option<String> {
-        self.clock.tick(lang, clock, alarms, sound_file)
+    pub fn tick(&mut self, clock: &Clock, alarms: &[(String, String)], sound_file: &str) -> Option<String> {
+        self.clock.tick(clock, alarms, sound_file)
     }
 
     /// Abre uma sub-aba (a paleta de comandos).
@@ -101,14 +101,14 @@ impl ToolsState {
 /// Desenha a aba Ferramentas inteira. `texts` é o histórico de clipboard (os
 /// "copiar" dos resultados criam entrada nova, como no recopiar da aba
 /// Clipboard); `alarms` é a lista persistida no config.
-pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ToolsState, texts: &mut History, alarms: &mut Vec<(String, String)>) -> Outcome {
+pub fn show(ui: &mut egui::Ui, state: &mut ToolsState, texts: &mut History, alarms: &mut Vec<(String, String)>) -> Outcome {
     let mut out = Outcome::default();
 
     // Nível 1 (Relógio · Calculadora · Unidades · Dev) em pills; o hairline e o
     // respiro separam do nível 2 de cada painel (segmented control).
     ui.horizontal(|ui| {
         for sub in SubTab::ALL {
-            if kit::pill(ui, i18n::t(lang, sub.label_key()), state.sub == sub).clicked() {
+            if kit::pill(ui, sub.label(), state.sub == sub).clicked() {
                 state.sub = sub;
             }
         }
@@ -119,22 +119,22 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ToolsState, texts: &mut H
 
     match state.sub {
         SubTab::Clock => {
-            let clock = tools_clock::show(ui, lang, &mut state.clock, alarms);
+            let clock = tools_clock::show(ui, &mut state.clock, alarms);
             out.cfg_changed |= clock.cfg_changed;
             out.status = clock.status.or(out.status);
         }
         SubTab::Calc => {
-            let calc = tools_calc::show(ui, lang, &mut state.calc, texts);
+            let calc = tools_calc::show(ui, &mut state.calc, texts);
             out.history_changed |= calc.history_changed;
             out.status = calc.status.or(out.status);
         }
         SubTab::Units => {
-            let units = tools_units::show(ui, lang, &mut state.units, texts);
+            let units = tools_units::show(ui, &mut state.units, texts);
             out.history_changed |= units.history_changed;
             out.status = units.status.or(out.status);
         }
         SubTab::Dev => {
-            let dev = tools_dev::show(ui, lang, &mut state.dev, texts);
+            let dev = tools_dev::show(ui, &mut state.dev, texts);
             out.history_changed |= dev.history_changed;
             out.status = dev.status.or(out.status);
         }

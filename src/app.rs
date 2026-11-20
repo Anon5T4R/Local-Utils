@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
 use eframe::egui;
-use utils_ui::config::{self, Config};
-use utils_ui::i18n::{self, Key, Lang};
+use crate::prefs::{self, Prefs};
+use crate::i18n::tr;
 
 use crate::autostart;
 use crate::capture::{self, Capture};
@@ -59,22 +59,22 @@ impl Tab {
     /// Todas as abas, na ordem do roadmap.
     pub(crate) const ALL: [Tab; 7] = [Tab::Clipboard, Tab::Screenshot, Tab::Sistema, Tab::Tools, Tab::Scratchpad, Tab::Cor, Tab::Converter];
 
-    pub(crate) fn label(self, lang: Lang) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         let key = match self {
-            Tab::Clipboard => Key::TabClipboard,
-            Tab::Screenshot => Key::TabScreenshot,
-            Tab::Sistema => Key::TabSystem,
-            Tab::Tools => Key::TabTools,
-            Tab::Scratchpad => Key::TabScratchpad,
-            Tab::Cor => Key::TabPicker,
-            Tab::Converter => Key::TabConvert,
+            Tab::Clipboard => tr("Clipboard"),
+            Tab::Screenshot => tr("Screenshot"),
+            Tab::Sistema => tr("System"),
+            Tab::Tools => tr("Tools"),
+            Tab::Scratchpad => tr("Scratchpad"),
+            Tab::Cor => tr("Color"),
+            Tab::Converter => tr("Convert"),
         };
-        i18n::t(lang, key)
+        key
     }
 }
 
 pub struct UtilsApp {
-    cfg: Config,
+    cfg: Prefs,
     /// Mensagem da barra de status (vazia = nada a mostrar).
     status: String,
     /// Instante (epoch ms) em que o status atual entrou. Status de ação some
@@ -150,12 +150,12 @@ pub struct UtilsApp {
 }
 
 impl UtilsApp {
-    pub fn new(mut cfg: Config) -> Self {
+    pub fn new(mut cfg: Prefs) -> Self {
         // Autostart: o registro é a fonte da verdade — o cache do config pode
         // estar velho se a chave Run foi mexida por fora.
         cfg.autostart_ok = autostart::enabled();
 
-        let data_dir = config::config_dir(APP_ID);
+        let data_dir = prefs::config_dir(APP_ID);
         let history_file = data_dir.join("history.json");
         let mut history = history::load(&history_file);
 
@@ -189,9 +189,9 @@ impl UtilsApp {
         // No Linux o handle do ícone não existe (stub) — só o canal importa.
         #[cfg_attr(not(windows), allow(unused_variables))]
         let (tray_icon, tray_rx) = tray::spawn(tray::Labels {
-            tooltip: i18n::t(cfg.lang, Key::AppTitle).to_string(),
-            open: i18n::t(cfg.lang, Key::TrayOpen).to_string(),
-            quit: i18n::t(cfg.lang, Key::TrayQuit).to_string(),
+            tooltip: tr("Local Utils").to_string(),
+            open: tr("Open Local Utils").to_string(),
+            quit: tr("Quit").to_string(),
         });
         let hotkey_rx = hotkey::spawn(cfg.hotkey.clone(), cfg.hotkey_screenshot.clone());
 
@@ -210,7 +210,7 @@ impl UtilsApp {
     /// Monta o app com as peças já prontas: `new` entra com as reais (monitor do clipboard, bandeja e atalho
     /// global); os testes de UI entram com peças vazias, sem tocar no sistema.
     fn assemble(
-        cfg: Config,
+        cfg: Prefs,
         data_dir: PathBuf,
         history: history::History,
         clip_rx: Option<Receiver<ClipEvent>>,
@@ -333,9 +333,9 @@ impl UtilsApp {
                     ctx.request_repaint();
                 }
                 HotkeyEvent::PressedShot => self.start_capture(ctx),
-                HotkeyEvent::Conflict => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyConflict))),
-                HotkeyEvent::Invalid => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyInvalid))),
-                HotkeyEvent::Unavailable => self.set_status(format!("⚠ {}", i18n::t(self.cfg.lang, Key::HotkeyUnavailable))),
+                HotkeyEvent::Conflict => self.set_status(format!("⚠ {}", tr("shortcut already in use"))),
+                HotkeyEvent::Invalid => self.set_status(format!("⚠ {}", tr("invalid shortcut — using the default"))),
+                HotkeyEvent::Unavailable => self.set_status(format!("⚠ {}", tr("could not register the shortcut"))),
                 HotkeyEvent::Registered => {}
             }
         }
@@ -343,7 +343,7 @@ impl UtilsApp {
 
     /// Abre o seletor de imagens do conversor (o botão da aba e a paleta): a fila entra quando a resposta chega.
     fn ask_convert_files(&mut self, ctx: &egui::Context) {
-        let dialog = convert::files_dialog(self.cfg.lang);
+        let dialog = convert::files_dialog();
         let _ = self.pickers.ask(ctx, pickers::Ask::Files(dialog), Box::new(|app, paths| app.convert.enqueue(paths)));
     }
 
@@ -352,7 +352,7 @@ impl UtilsApp {
     /// stub e o aviso sai traduzido.
     fn start_capture(&mut self, ctx: &egui::Context) {
         if let Err(e) = self.capture.begin(ctx) {
-            self.set_status(format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::CaptureFailed)));
+            self.set_status(format!("⚠ {}: {e}", tr("Could not capture the screen")));
         }
         ctx.request_repaint();
     }
@@ -361,19 +361,18 @@ impl UtilsApp {
     /// (fluxo do popup: Enter ou clique). Na lista da janela principal nada
     /// disto roda — lá recopiar é só recopiar.
     fn paste_entry(&mut self, id: u128) {
-        let lang = self.cfg.lang;
         // Resultado já dono: o empréstimo do histórico morre aqui e o
         // `set_status` pode mexer no app.
         let copied = self.history.entries().iter().find(|e| e.id == id).map(clipboard::write_back);
         match copied {
             // A entrada saiu da lista entre o Enter e a colagem.
             None => {}
-            Some(Err(e)) => self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed))),
+            Some(Err(e)) => self.set_status(format!("⚠ {}: {e}", tr("Could not copy"))),
             Some(Ok(())) => {
                 #[cfg(windows)]
                 {
                     if let Err(e) = crate::paste::paste_into_focused() {
-                        self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::PasteFailed)));
+                        self.set_status(format!("⚠ {}: {e}", tr("Could not paste into the active window")));
                     }
                 }
             }
@@ -382,7 +381,6 @@ impl UtilsApp {
 
     /// Pede a OCR de uma imagem do histórico (botão da linha).
     fn start_ocr(&mut self, id: u128, ctx: &egui::Context) {
-        let lang = self.cfg.lang;
         let outcome = {
             // Empréstimos de campos separados: o pedido lê o histórico e mexe
             // no estado do OCR ao mesmo tempo.
@@ -393,24 +391,23 @@ impl UtilsApp {
             // Cache: o texto já está pronto, o modal abre na hora.
             Ok(Some(text)) => self.clip_ui.show_ocr(id, text),
             // Thread rodando: o resultado entra pelo `drain_ocr`.
-            Ok(None) => self.set_status(i18n::t(lang, Key::OcrReading).to_string()),
-            Err(e) => self.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::OcrFailed))),
+            Ok(None) => self.set_status(tr("reading the image…").to_string()),
+            Err(e) => self.set_status(format!("⚠ {}: {e}", tr("Could not read the image"))),
         }
         ctx.request_repaint();
     }
 
     /// Drena o resultado da OCR. Texto vazio não abre modal: avisa no rodapé.
     fn drain_ocr(&mut self, ctx: &egui::Context) {
-        let lang = self.cfg.lang;
         while let Some(event) = self.ocr.poll() {
             match event {
                 ocr::OcrEvent::Done { text, .. } if text.is_empty() => {
-                    self.set_status(format!("⚠ {}", i18n::t(lang, Key::OcrEmpty)));
+                    self.set_status(format!("⚠ {}", tr("no text found in the image")));
                 }
                 ocr::OcrEvent::Done { id, text } => self.clip_ui.show_ocr(id, text),
                 ocr::OcrEvent::Failed { error } => {
                     eprintln!("ocr: {error}");
-                    self.set_status(format!("⚠ {}: {error}", i18n::t(lang, Key::OcrFailed)));
+                    self.set_status(format!("⚠ {}: {error}", tr("Could not read the image")));
                 }
             }
         }
@@ -464,7 +461,7 @@ impl UtilsApp {
     /// mudou em memória). Erro vira status no rodapé: um autosave que falha em
     /// silêncio perderia o texto do usuário.
     fn save_config(&mut self) {
-        if let Err(e) = config::save_to(&self.config_file(), &self.cfg) {
+        if let Err(e) = prefs::save_to(&self.config_file(), &self.cfg) {
             self.set_status(format!("⚠ {e}"));
         }
     }
@@ -482,11 +479,11 @@ impl UtilsApp {
             match autostart::set(on) {
                 Ok(()) => {
                     self.cfg.autostart_ok = on;
-                    if let Err(e) = config::save_to(&self.config_file(), &self.cfg) {
+                    if let Err(e) = prefs::save_to(&self.config_file(), &self.cfg) {
                         eprintln!("config: {e}");
                     }
                 }
-                Err(e) => self.set_status(format!("⚠ {}: {e}", i18n::t(self.cfg.lang, Key::AutostartFailed))),
+                Err(e) => self.set_status(format!("⚠ {}: {e}", tr("Could not change the autostart"))),
             }
         }
         if opts.save {
@@ -494,17 +491,17 @@ impl UtilsApp {
             self.cfg.hotkey = hotkey_spec;
             self.cfg.exclude = exclude;
             self.cfg.alarm_sound = alarm_sound;
-            match config::save_to(&self.config_file(), &self.cfg) {
+            match prefs::save_to(&self.config_file(), &self.cfg) {
                 // Atalho e exclusões são lidos na subida (registro do atalho e
                 // monitor do clipboard): avisa em vez de fingir que já valeu.
-                Ok(()) => self.set_status(i18n::t(self.cfg.lang, Key::RestartApplies).to_string()),
+                Ok(()) => self.set_status(tr("Applies after restarting the app").to_string()),
                 Err(e) => self.set_status(format!("⚠ {e}")),
             }
         }
         // Popup no cursor vale NA HORA (nada do SO é relido): só persiste.
         if let Some(on) = opts.popup_mode {
             self.cfg.popup_instead_of_window = on;
-            if let Err(e) = config::save_to(&self.config_file(), &self.cfg) {
+            if let Err(e) = prefs::save_to(&self.config_file(), &self.cfg) {
                 eprintln!("config: {e}");
             }
         }
@@ -512,7 +509,6 @@ impl UtilsApp {
         // o export/import roda na continuação, num frame posterior. Cancelou
         // (paths vazios) = nada acontece, como antes.
         if opts.export {
-            let lang = self.cfg.lang;
             let dialog = transfer::export_dialog(&transfer::export_name());
             let _ = self.pickers.ask(
                 ctx,
@@ -520,15 +516,14 @@ impl UtilsApp {
                 Box::new(move |app, paths| {
                     let Some(path) = paths.first() else { return };
                     let status = match transfer::export_to(path, &app.history) {
-                        Ok(()) => i18n::t(lang, Key::Exported).to_string(),
-                        Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::ExportFailed)),
+                        Ok(()) => tr("history exported").to_string(),
+                        Err(e) => format!("⚠ {}: {e}", tr("Could not export the history")),
                     };
                     app.set_status(status);
                 }),
             );
         }
         if opts.import {
-            let lang = self.cfg.lang;
             let dialog = transfer::open_dialog();
             let _ = self.pickers.ask(
                 ctx,
@@ -543,9 +538,9 @@ impl UtilsApp {
                             // O import pode mexer na lista sem mudar o tamanho:
                             // o cache da lista filtrada precisa ser descartado.
                             app.clip_ui.invalidate();
-                            app.set_status(i18n::t(lang, Key::Imported).to_string());
+                            app.set_status(tr("history imported").to_string());
                         }
-                        Err(e) => app.set_status(format!("⚠ {}: {e}", i18n::t(lang, Key::ImportFailed))),
+                        Err(e) => app.set_status(format!("⚠ {}: {e}", tr("Could not import the history"))),
                     }
                 }),
             );
@@ -621,7 +616,7 @@ impl UtilsApp {
         // mesmo jeito. O repaint de 500ms é o mesmo do monitor de clipboard;
         // sem ele nada aqui acorda a UI.
         let clock = clipboard_ui::Clock::now();
-        if let Some(message) = self.tools.tick(self.cfg.lang, &clock, &self.cfg.alarms, &self.cfg.alarm_sound) {
+        if let Some(message) = self.tools.tick(&clock, &self.cfg.alarms, &self.cfg.alarm_sound) {
             self.set_status(message);
             ctx.request_repaint();
         }
@@ -648,7 +643,7 @@ impl UtilsApp {
         if self.notes.due(now) {
             self.save_config();
             self.notes.saved();
-            self.set_status(i18n::t(self.cfg.lang, Key::NotesSaved).to_string());
+            self.set_status(tr("saved ✓").to_string());
         } else if self.notes.pending() {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
@@ -667,7 +662,7 @@ impl UtilsApp {
             // Com as Configurações abertas o resultado aparece nelas (shell.rs), não num modal à parte.
             _ if self.options.is_open() => {}
             craft_update::updater::Status::UpToDate => {
-                self.update_note = Some(format!("{} ({})", i18n::t(self.cfg.lang, Key::UpToDate), CURRENT_VERSION));
+                self.update_note = Some(format!("{} ({})", tr("up to date"), CURRENT_VERSION));
                 self.updater.dismiss_status();
             }
             craft_update::updater::Status::Failed(e) => {
@@ -718,8 +713,8 @@ impl UtilsApp {
                 // catálogo não tem forma plural ainda): 1 item, 2 itens — as
                 // linhas `ItemOne`/`ItemsCount` do TSV são cobertas por teste
                 // em `utils-ui` (o QA já viu "4 items" em inglês).
-                let key = if self.history.len() == 1 { Key::ItemOne } else { Key::ItemsCount };
-                let count = i18n::t(self.cfg.lang, key).replace("{n}", &self.history.len().to_string());
+                let key = if self.history.len() == 1 { tr("{n} item") } else { tr("{n} items") };
+                let count = key.replace("{n}", &self.history.len().to_string());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(count).small().weak());
                 });
@@ -751,8 +746,8 @@ impl UtilsApp {
             ui.horizontal(|ui| {
                 for tab in Tab::ALL {
                     let label = match (&badge, tab) {
-                        (Some(badge), Tab::Tools) => format!("{} {badge}", tab.label(self.cfg.lang)),
-                        _ => tab.label(self.cfg.lang).to_string(),
+                        (Some(badge), Tab::Tools) => format!("{} {badge}", tab.label()),
+                        _ => tab.label().to_string(),
                     };
                     ui.selectable_value(&mut self.tab, tab, label);
                 }
@@ -761,18 +756,18 @@ impl UtilsApp {
             match self.tab {
                 // Clipboard é a âncora: lista virtualizada do histórico.
                 Tab::Clipboard => {
-                    outcome = clipboard_ui::show(ui, self.cfg.lang, &mut self.history, &mut self.clip_ui);
+                    outcome = clipboard_ui::show(ui, &mut self.history, &mut self.clip_ui);
                 }
                 // Screenshot: editor da captura pendente (ou a dica do atalho).
                 Tab::Screenshot => {
-                    let shot = shot_editor::show(ui, self.cfg.lang, &self.cfg.hotkey_screenshot, self.shot.as_mut());
+                    let shot = shot_editor::show(ui, &self.cfg.hotkey_screenshot, self.shot.as_mut());
                     shot_status = shot.status;
                     shot_discarded = shot.discard;
                     shot_save = shot.save;
                 }
                 // Ferramentas: relógio, calculadora, conversor e dev tools.
                 Tab::Tools => {
-                    let tool_out = tools::show(ui, self.cfg.lang, &mut self.tools, &mut self.history, &mut self.cfg.alarms);
+                    let tool_out = tools::show(ui, &mut self.tools, &mut self.history, &mut self.cfg.alarms);
                     tool_cfg |= tool_out.cfg_changed;
                     tool_history |= tool_out.history_changed;
                     tool_status = tool_out.status;
@@ -780,25 +775,25 @@ impl UtilsApp {
                 // Notas: o scratchpad multilinha (o texto mora no config; o
                 // autosave é do app, no topo do frame).
                 Tab::Scratchpad => {
-                    tools_notes::show(ui, self.cfg.lang, &mut self.notes, &mut self.cfg.notes);
+                    tools_notes::show(ui, &mut self.notes, &mut self.cfg.notes);
                 }
                 // Cor: seletor + conta-gotas + recentes (o "copiar" cria entrada
                 // Text no histórico, como nas Ferramentas).
                 Tab::Cor => {
-                    let pick = picker::show(ui, self.cfg.lang, &mut self.picker, &mut self.history);
+                    let pick = picker::show(ui, &mut self.picker, &mut self.history);
                     picker_history |= pick.history_changed;
                     picker_cfg |= pick.cfg_changed;
                     picker_status = pick.status;
                 }
                 // Converter: fila de imagens (drop/seleção) → PNG/JPEG/WebP.
                 Tab::Converter => {
-                    let conv = convert::show(ui, self.cfg.lang, &mut self.convert);
+                    let conv = convert::show(ui, &mut self.convert);
                     convert_status = conv.status;
                     convert_pick = conv.pick;
                 }
                 // Sistema: monitor de CPU/memória/discos/rede/bateria/processos.
                 Tab::Sistema => {
-                    let sys = system::show(ui, self.cfg.lang, &mut self.system);
+                    let sys = system::show(ui, &mut self.system);
                     system_status = sys.status;
                 }
             }
@@ -831,7 +826,6 @@ impl UtilsApp {
         // Cancelou (paths vazios) = silêncio, como antes; se a captura foi
         // descartada enquanto o painel estava aberto, não há o que salvar.
         if shot_save {
-            let lang = self.cfg.lang;
             let dialog = shot_editor::save_dialog();
             let _ = self.pickers.ask(
                 ctx,
@@ -839,7 +833,7 @@ impl UtilsApp {
                 Box::new(move |app, paths| {
                     let Some(path) = paths.first() else { return };
                     let Some(shot) = app.shot.as_ref() else { return };
-                    let status = shot_editor::save_to(shot, path, lang);
+                    let status = shot_editor::save_to(shot, path);
                     app.set_status(status);
                 }),
             );
@@ -903,13 +897,13 @@ impl UtilsApp {
         }
         if self.popup.is_open() {
             self.popup.sync(&self.history);
-            popup::show(ctx, self.cfg.lang, &self.popup);
+            popup::show(ctx, &self.popup);
         }
 
         // Captura de tela: o overlay de seleção é um viewport próprio (como o
         // popup). Confirmou? A aba Screenshot abre com o recorte no editor.
         if self.capture.is_open() {
-            capture::show(ctx, self.cfg.lang, &self.cfg.hotkey_screenshot, &self.capture);
+            capture::show(ctx, &self.cfg.hotkey_screenshot, &self.capture);
         }
         if let Some(image) = self.capture.take_result() {
             self.shot = Some(Shot::new(image));
@@ -921,7 +915,7 @@ impl UtilsApp {
         // com a tela congelada, lupa e Esc. A cor escolhida entra nos recentes
         // e a aba Cor abre com ela.
         if self.picker.eyedropping() {
-            picker::show_overlay(ctx, self.cfg.lang, &self.picker);
+            picker::show_overlay(ctx, &self.picker);
         }
         if let Some(color) = self.picker.take_picked() {
             self.picker.adopt(color);
@@ -934,7 +928,7 @@ impl UtilsApp {
         // Nota do check manual (Atualizado ✓ / falha): modal simples com OK.
         if let Some(note) = self.update_note.clone() {
             let mut close = false;
-            egui::Window::new(i18n::t(self.cfg.lang, Key::CheckUpdates))
+            egui::Window::new(tr("Check for updates"))
                 .id(egui::Id::unique("update-note"))
                 .frame(crate::ui::modal_frame(ctx))
                 .collapsible(false)
@@ -946,7 +940,7 @@ impl UtilsApp {
                     ui.label(&note);
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if crate::ui::pill(ui, i18n::t(self.cfg.lang, Key::Close), false).clicked() {
+                        if crate::ui::pill(ui, tr("Close"), false).clicked() {
                             close = true;
                         }
                     });

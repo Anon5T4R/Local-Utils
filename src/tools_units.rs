@@ -9,7 +9,7 @@
 //! são SÍMBOLOS (`km`, `GiB`, `°C`) — iguais nos três idiomas de propósito, então
 //! não passam pelo catálogo i18n; só os nomes das CATEGORIAS passam.
 
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::clipboard_ui::copy_new_text;
 use crate::history::History;
@@ -42,13 +42,13 @@ impl Category {
     /// Todas as categorias, na ordem da barra.
     pub const ALL: [Category; 5] = [Category::Length, Category::Mass, Category::Temperature, Category::Data, Category::Speed];
 
-    fn label_key(self) -> Key {
+    fn label(self) -> &'static str {
         match self {
-            Category::Length => Key::UnitsLength,
-            Category::Mass => Key::UnitsMass,
-            Category::Temperature => Key::UnitsTemperature,
-            Category::Data => Key::UnitsData,
-            Category::Speed => Key::UnitsSpeed,
+            Category::Length => tr("Length"),
+            Category::Mass => tr("Mass"),
+            Category::Temperature => tr("Temperature"),
+            Category::Data => tr("Data"),
+            Category::Speed => tr("Speed"),
         }
     }
 
@@ -189,10 +189,10 @@ impl UnitsState {
     }
 
     /// Resultado pronto pra tela: valor formatado ou a mensagem de erro.
-    fn result(&self) -> Result<String, Key> {
-        let value: f64 = self.value.trim().replace(',', ".").parse().map_err(|_| Key::UnitsInvalid)?;
-        let (Some(from), Some(to)) = (self.origin_id(), self.target_id()) else { return Err(Key::UnitsInvalid) };
-        let converted = convert(self.cat, value, from, to).ok_or(Key::UnitsInvalid)?;
+    fn result(&self) -> Result<String, &'static str> {
+        let value: f64 = self.value.trim().replace(',', ".").parse().map_err(|_| tr("enter a number"))?;
+        let (Some(from), Some(to)) = (self.origin_id(), self.target_id()) else { return Err(tr("enter a number")) };
+        let converted = convert(self.cat, value, from, to).ok_or(tr("enter a number"))?;
         Ok(fmt_value(converted))
     }
 }
@@ -219,14 +219,14 @@ fn unit_combo(ui: &mut egui::Ui, id: &str, label: &str, units: &'static [Unit], 
 
 /// Desenha o conversor. `texts` é o histórico de clipboard (o "copiar" cria uma
 /// entrada nova de texto, como no recopiar da aba Clipboard).
-pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut History) -> Outcome {
+pub fn show(ui: &mut egui::Ui, state: &mut UnitsState, texts: &mut History) -> Outcome {
     let mut out = Outcome::default();
 
     kit::column(ui, CONTENT_W, |ui| {
         // Categoria: segmented control (nível 2), abaixo das pills da aba.
         ui.horizontal(|ui| {
             for cat in Category::ALL {
-                if kit::segmented(ui, i18n::t(lang, cat.label_key()), state.cat == cat).clicked() && state.cat != cat {
+                if kit::segmented(ui, cat.label(), state.cat == cat).clicked() && state.cat != cat {
                     state.cat = cat;
                     // Os índices antigos podem não existir na categoria nova.
                     state.from = 0;
@@ -241,7 +241,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut H
             let skin = Skin::of(ui);
 
             // ── valor digitado, grande (mono) ────────────────────────
-            ui.label(egui::RichText::new(i18n::t(lang, Key::UnitsValue)).small().color(skin.muted));
+            ui.label(egui::RichText::new(tr("Value")).small().color(skin.muted));
             let field_w = ui.available_width();
             ui.add(
                 egui::TextEdit::singleline(&mut state.value)
@@ -259,17 +259,17 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut H
             let units = state.cat.units();
             let combo_w = ((ui.available_width() - 100.0) / 2.0).max(120.0);
             ui.horizontal(|ui| {
-                unit_combo(ui, "units-from", i18n::t(lang, Key::UnitsFrom), units, &mut state.from, combo_w);
+                unit_combo(ui, "units-from", tr("From"), units, &mut state.from, combo_w);
                 ui.add_space(8.0);
                 // Troca origem e destino de uma vez (o valor digitado fica).
                 ui.vertical(|ui| {
                     ui.add_space(18.0);
-                    if kit::ghost(ui, "⇄").on_hover_text(i18n::t(lang, Key::UnitsSwap)).clicked() {
+                    if kit::ghost(ui, "⇄").on_hover_text(tr("Swap units")).clicked() {
                         std::mem::swap(&mut state.from, &mut state.to);
                     }
                 });
                 ui.add_space(8.0);
-                unit_combo(ui, "units-to", i18n::t(lang, Key::UnitsTo), units, &mut state.to, combo_w);
+                unit_combo(ui, "units-to", tr("To"), units, &mut state.to, combo_w);
             });
             ui.add_space(14.0);
 
@@ -279,7 +279,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut H
                     ui.horizontal(|ui| {
                         let label = egui::Label::new(egui::RichText::new(&text).font(egui::FontId::monospace(30.0)).strong().color(skin.accent))
                             .sense(egui::Sense::click());
-                        let resp = ui.add(label).on_hover_text(i18n::t(lang, Key::CopyValue));
+                        let resp = ui.add(label).on_hover_text(tr("Copy"));
                         if resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                         }
@@ -287,7 +287,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut H
                             ui.label(egui::RichText::new(unit.id).small().color(skin.muted));
                         }
                         if resp.clicked() {
-                            let (changed, status) = copy_new_text(texts, lang, &text);
+                            let (changed, status) = copy_new_text(texts, &text);
                             out.history_changed |= changed;
                             out.status = Some(status);
                         }
@@ -302,7 +302,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut UnitsState, texts: &mut H
                     }
                 }
                 Err(key) => {
-                    ui.label(egui::RichText::new(format!("⚠ {}", i18n::t(lang, key))).color(skin.danger));
+                    ui.label(egui::RichText::new(format!("⚠ {}", key)).color(skin.danger));
                 }
             }
         });

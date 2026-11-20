@@ -21,8 +21,8 @@
 use std::sync::{Arc, Mutex};
 
 use eframe::egui;
-use utils_ui::i18n::{self, Key, Lang};
-use utils_ui::workarea;
+use crate::i18n::tr;
+use crate::workarea;
 
 use crate::clipboard_ui::{self, Clock};
 use crate::history::{Entry, History, Kind};
@@ -207,7 +207,7 @@ fn matching(rows: &[Row], search: &str) -> Vec<usize> {
 }
 
 /// Desenha o viewport do popup (só quando aberto).
-pub fn show(ctx: &egui::Context, lang: Lang, popup: &Popup) {
+pub fn show(ctx: &egui::Context, popup: &Popup) {
     if !popup.is_open() {
         return;
     }
@@ -236,7 +236,7 @@ pub fn show(ctx: &egui::Context, lang: Lang, popup: &Popup) {
             }
             return;
         }
-        draw(ui, lang, &state);
+        draw(ui, &state);
     });
     // Foco explicitamente pedido ao SO: criar com `active` nem sempre basta
     // quando o app está na bandeja (o Windows tem trava de primeiro plano).
@@ -246,7 +246,7 @@ pub fn show(ctx: &egui::Context, lang: Lang, popup: &Popup) {
 }
 
 /// Corpo do popup: campo de busca, lista slim e teclado.
-fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
+fn draw(ui: &mut egui::Ui, state: &Arc<Mutex<State>>) {
     let ctx = ui.ctx().clone();
     let clock = Clock::now();
     let focused = ctx.input(|i| i.viewport().focused);
@@ -317,13 +317,13 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
             // `desired_width(INFINITY)` o campo comia a linha inteira e o botão
             // saía pela borda direita.
             let field = ui.add(
-                kit::line(&mut st.search).hint_text(i18n::t(lang, Key::Search)).desired_width((ui.available_width() - CLOSE_BTN - 8.0).max(120.0)),
+                kit::line(&mut st.search).hint_text(tr("Search")).desired_width((ui.available_width() - CLOSE_BTN - 8.0).max(120.0)),
             );
             if !st.focus_requested {
                 field.request_focus();
                 st.focus_requested = true;
             }
-            if close_button(ui, skin).on_hover_text(i18n::t(lang, Key::Close)).clicked() {
+            if close_button(ui, skin).on_hover_text(tr("Close")).clicked() {
                 want_close = true;
             }
         });
@@ -335,7 +335,7 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
 
         if hits.is_empty() {
             ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                ui.label(egui::RichText::new(i18n::t(lang, Key::PopupNoResults)).weak());
+                ui.label(egui::RichText::new(tr("Nothing found")).weak());
             });
             return;
         }
@@ -347,7 +347,7 @@ fn draw(ui: &mut egui::Ui, lang: Lang, state: &Arc<Mutex<State>>) {
             for (pos, index) in hits.iter().enumerate() {
                 let Some(row) = st.rows.get(*index) else { continue };
                 let focused = st.focus == Some(pos);
-                let resp = row_ui(ui, lang, &clock, row, focused);
+                let resp = row_ui(ui, &clock, row, focused);
                 // Só rola quando o foco veio das SETAS (ver `State::scroll_to`):
                 // a cada frame brigava com a roda do usuário.
                 if focused && wanted == Some(pos) {
@@ -382,7 +382,7 @@ fn close_button(ui: &mut egui::Ui, skin: Skin) -> egui::Response {
 
 /// Uma linha da lista slim: tipo + carimbo em cima, preview embaixo. Sem pin e
 /// sem ações — o popup só serve pra escolher e colar.
-fn row_ui(ui: &mut egui::Ui, lang: Lang, clock: &Clock, row: &Row, focused: bool) -> egui::Response {
+fn row_ui(ui: &mut egui::Ui, clock: &Clock, row: &Row, focused: bool) -> egui::Response {
     let skin = Skin::of(ui);
     let width = ui.available_width().max(1.0);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, ROW_H), egui::Sense::click());
@@ -405,9 +405,9 @@ fn row_ui(ui: &mut egui::Ui, lang: Lang, clock: &Clock, row: &Row, focused: bool
     let mut line = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::LEFT)));
     line.spacing_mut().item_spacing.y = 2.0;
     line.horizontal(|ui| {
-        ui.label(egui::RichText::new(clipboard_ui::kind_label(lang, row.kind)).small().color(skin.muted));
+        ui.label(egui::RichText::new(clipboard_ui::kind_label(row.kind)).small().color(skin.muted));
         ui.label(egui::RichText::new("·").small().color(skin.muted));
-        ui.label(egui::RichText::new(clock.stamp(lang, row.ts_ms)).small().color(skin.muted));
+        ui.label(egui::RichText::new(clock.stamp(row.ts_ms)).small().color(skin.muted));
     });
     line.add(egui::Label::new(egui::RichText::new(&row.preview).color(skin.text)).truncate());
     resp

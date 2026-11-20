@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["xtask", "utils-ui"]
-default-members = [".", "utils-ui"]
+members = ["xtask"]
+default-members = ["."]
 exclude = ["libs"]
 
 [workspace.package]
@@ -50,7 +50,7 @@ eframe = "0.37"
 # de UI (★ 🗑 ✏ 📋) viram tofu: as fontes default (Hack/Ubuntu) não os têm.
 egui = { version = "0.37", features = ["default_fonts", "monochrome_emoji_fonts"] }
 image = "0.25"
-utils-ui = { path = "utils-ui" }
+craft-i18n = { path = "libs/craft-libs/crates/i18n" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Hash das ferramentas de dev (`tools_dev.rs`): SHA-256 e MD5 do RustCrypto.

@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 use image::RgbaImage;
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 /// Título PRÓPRIO de propósito: `winctl::discover` acha a janela principal pelo
 /// título exato ("Local Utils") — o overlay não pode se passar por ela.
@@ -184,7 +184,7 @@ impl Capture {
 
 /// Desenha o overlay (só quando aberto). O app chama isto a cada frame; parar
 /// de chamar derruba a janela.
-pub fn show(ctx: &egui::Context, lang: Lang, hotkey: &str, cap: &Capture) {
+pub fn show(ctx: &egui::Context, hotkey: &str, cap: &Capture) {
     let (pos, size) = match cap.state.lock() {
         Ok(st) if st.open => match st.frame.as_ref() {
             Some(f) => (f.pos_pt, f.size_pt),
@@ -193,7 +193,7 @@ pub fn show(ctx: &egui::Context, lang: Lang, hotkey: &str, cap: &Capture) {
         _ => return,
     };
     let state = Arc::clone(&cap.state);
-    let hint = i18n::t(lang, Key::CaptureHint).replace("{hotkey}", &crate::options::pretty_hotkey(hotkey));
+    let hint = tr("Press {hotkey} to capture").replace("{hotkey}", &crate::options::pretty_hotkey(hotkey));
     let builder = egui::ViewportBuilder::default()
         .with_title(OVERLAY_TITLE)
         .with_position(pos)

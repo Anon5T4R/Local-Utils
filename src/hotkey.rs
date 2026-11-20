@@ -68,7 +68,7 @@ mod imp {
 
     use super::HotkeyEvent;
     use crate::winctl;
-    use utils_ui::config::{DEFAULT_HOTKEY, DEFAULT_HOTKEY_SCREENSHOT};
+    use crate::prefs::{DEFAULT_HOTKEY, DEFAULT_HOTKEY_SCREENSHOT};
 
     pub fn spawn(primary: String, secondary: String) -> Option<Receiver<HotkeyEvent>> {
         let (tx, rx) = channel();

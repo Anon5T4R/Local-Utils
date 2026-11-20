@@ -24,7 +24,7 @@ use std::sync::mpsc::Receiver;
 
 use eframe::egui;
 use image::{DynamicImage, ExtendedColorType, ImageEncoder};
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::ui::{self as kit, Skin};
 
@@ -263,7 +263,7 @@ impl ConvertState {
 // ── aba ──────────────────────────────────────────────────────────────────
 
 /// Desenha a aba Converter.
-pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome {
+pub fn show(ui: &mut egui::Ui, state: &mut ConvertState) -> Outcome {
     let mut out = Outcome::default();
     let skin = Skin::of(ui);
 
@@ -274,26 +274,26 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
         state.enqueue(dropped);
     }
 
-    drop_zone(ui, lang);
+    drop_zone(ui);
     ui.add_space(8.0);
 
     ui.horizontal(|ui| {
         // Seletor nativo assíncrono (`src/pickers.rs`): o clique só PEDE o
         // diálogo — o app abre e enfileira na continuação, num frame posterior.
-        if kit::pill(ui, i18n::t(lang, Key::SelectFiles), true).clicked() {
+        if kit::pill(ui, tr("Select files"), true).clicked() {
             out.pick = true;
         }
         ui.add_space(8.0);
-        ui.label(i18n::t(lang, Key::Quality));
+        ui.label(tr("Quality"));
         let mut quality = i32::from(state.quality);
-        if ui.add(egui::Slider::new(&mut quality, 1..=100).show_value(true)).on_hover_text(i18n::t(lang, Key::QualityHint)).changed() {
+        if ui.add(egui::Slider::new(&mut quality, 1..=100).show_value(true)).on_hover_text(tr("Applies to JPEG; WebP is saved lossless")).changed() {
             state.quality = quality.clamp(1, 100) as u8;
         }
         ui.add_space(8.0);
         // Converter: rótulo da aba e do botão são a MESMA palavra no catálogo.
         let enabled = !state.running() && state.waiting() > 0;
         ui.add_enabled_ui(enabled, |ui| {
-            if kit::pill(ui, i18n::t(lang, Key::TabConvert), true).clicked() {
+            if kit::pill(ui, tr("Convert"), true).clicked() {
                 if let Err(e) = state.start() {
                     out.status = Some(format!("⚠ {e}"));
                 }
@@ -304,7 +304,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
     // JXL só como origem (não há codificador compatível com a licença): o
     // aviso fica junto da fila, não escondido num tooltip.
     ui.add_space(4.0);
-    ui.label(egui::RichText::new(i18n::t(lang, Key::JxlInputOnly)).small().weak());
+    ui.label(egui::RichText::new(tr("JXL is input only (no encoder compatible with our license)")).small().weak());
 
     let total = state.total();
     if total > 0 {
@@ -321,7 +321,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
     ui.horizontal(|ui| {
         let done = state.finished();
         ui.add_enabled_ui(done > 0, |ui| {
-            if kit::ghost(ui, i18n::t(lang, Key::ClearDone)).clicked() {
+            if kit::ghost(ui, tr("Clear finished")).clicked() {
                 state.queue.retain(|item| item.status == Status::Waiting);
             }
         });
@@ -333,7 +333,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
             ui.horizontal(|ui| {
                 ui.add_sized([260.0, 22.0], egui::Label::new(egui::RichText::new(item.label.as_str()).color(skin.text)).truncate())
                     .on_hover_text(item.path.display().to_string());
-                let kind = item.src.map_or_else(|| i18n::t(lang, Key::UnsupportedType).to_string(), |src| src.label().to_string());
+                let kind = item.src.map_or_else(|| tr("not a supported image").to_string(), |src| src.label().to_string());
                 ui.add_sized([64.0, 22.0], egui::Label::new(egui::RichText::new(kind).small().weak()).truncate());
 
                 if item.src.is_some() {
@@ -347,16 +347,16 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
                 }
 
                 let status = match &item.status {
-                    Status::Waiting => (format!("⏳ {}", i18n::t(lang, Key::ConvertWaiting)), skin.muted),
-                    Status::Unsupported => (format!("⚠ {}", i18n::t(lang, Key::UnsupportedType)), skin.danger),
-                    Status::Done { name } => (format!("✓ {}", i18n::t(lang, Key::ConvertedTo).replace("{name}", name)), skin.text),
-                    Status::Failed { error } => (format!("⚠ {}: {error}", i18n::t(lang, Key::ConvertFailed)), skin.danger),
+                    Status::Waiting => (format!("⏳ {}", tr("waiting")), skin.muted),
+                    Status::Unsupported => (format!("⚠ {}", tr("not a supported image")), skin.danger),
+                    Status::Done { name } => (format!("✓ {}", tr("saved as {name}").replace("{name}", name)), skin.text),
+                    Status::Failed { error } => (format!("⚠ {}: {error}", tr("Could not convert")), skin.danger),
                 };
                 ui.add_sized([360.0, 22.0], egui::Label::new(egui::RichText::new(status.0.as_str()).small().color(status.1)).truncate())
                     .on_hover_text(status.0.clone());
 
                 // "×" (U+00D7): o "✕" (U+2715) não existe nas fontes e saía vazio.
-                if kit::ghost_action(ui, "×").on_hover_text(i18n::t(lang, Key::Remove)).clicked() {
+                if kit::ghost_action(ui, "×").on_hover_text(tr("Remove")).clicked() {
                     remove = Some(index);
                 }
             });
@@ -372,7 +372,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut ConvertState) -> Outcome 
 
 /// Zona de soltar: grade tracejada fraca com a dica. Fica em accent quando há
 /// arquivo pairando sobre a janela.
-fn drop_zone(ui: &mut egui::Ui, lang: Lang) {
+fn drop_zone(ui: &mut egui::Ui) {
     let skin = Skin::of(ui);
     let hovered = ui.input(|i| !i.raw.hovered_files.is_empty());
     let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 92.0), egui::Sense::hover());
@@ -386,7 +386,7 @@ fn drop_zone(ui: &mut egui::Ui, lang: Lang) {
         shapes.extend(egui::Shape::dashed_line(pair, stroke, 7.0, 5.0));
     }
     ui.painter().extend(shapes);
-    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, i18n::t(lang, Key::DropImagesHint), egui::FontId::proportional(15.0), skin.muted);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, tr("Drop images here"), egui::FontId::proportional(15.0), skin.muted);
 }
 
 /// Arquivos largados na janela neste frame (o `egui` não limpa sozinho porque
@@ -397,8 +397,8 @@ fn take_dropped(ctx: &egui::Context) -> Vec<PathBuf> {
 
 /// Diálogo nativo de múltiplos arquivos, montado pra fila assíncrona
 /// (`src/pickers.rs`): quem espera a resposta é a thread de lá.
-pub(crate) fn files_dialog(lang: Lang) -> rfd::AsyncFileDialog {
-    rfd::AsyncFileDialog::new().add_filter(i18n::t(lang, Key::FilterImages), PICK_FILTER)
+pub(crate) fn files_dialog() -> rfd::AsyncFileDialog {
+    rfd::AsyncFileDialog::new().add_filter(tr("Images"), PICK_FILTER)
 }
 
 // ── detecção, nomes e conversão ──────────────────────────────────────────

@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 use sysinfo::{Components, DiskKind, Disks, InterfaceOperationalState, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 use crate::ui as kit;
 use crate::ui::Skin;
@@ -542,14 +542,14 @@ fn hottest(comps: &Components) -> Option<f32> {
 }
 
 /// Card do CPU: cabeçalho com o uso, sparkline do último minuto e os núcleos.
-fn cpu_card(ui: &mut egui::Ui, lang: Lang, live: &Live, cores: &[f32], grid: CoreGrid) {
+fn cpu_card(ui: &mut egui::Ui, live: &Live, cores: &[f32], grid: CoreGrid) {
     let skin = Skin::of(ui);
     let cpu = usage_non_negative(live.sys.global_cpu_usage());
-    card_head(ui, i18n::t(lang, Key::SysCpu), &format!("· {cpu:.0}%"), skin.accent);
+    card_head(ui, tr("CPU"), &format!("· {cpu:.0}%"), skin.accent);
     ui.add_space(6.0);
     sparkline(ui, &live.cpu_hist, 100.0, skin.accent, SPARK_H);
     ui.add_space(10.0);
-    ui.label(egui::RichText::new(i18n::t(lang, Key::SysPerCore)).small().color(skin.muted));
+    ui.label(egui::RichText::new(tr("per core")).small().color(skin.muted));
     ui.add_space(4.0);
     core_chips(ui, cores, grid);
 }
@@ -583,12 +583,12 @@ fn cpu_card_h(ui: &egui::Ui, inner_w: f32, cores: usize) -> f32 {
 /// `inner_h` é a altura ÚTIL que a fileira impõe (a do card do CPU, mais alto):
 /// os dois medidores se dividem nela em vez de o painel terminar no meio e
 /// deixar um vazio embaixo. `0.0` = altura natural (cards empilhados).
-fn memory_card(ui: &mut egui::Ui, lang: Lang, live: &Live, inner_h: f32) {
+fn memory_card(ui: &mut egui::Ui, live: &Live, inner_h: f32) {
     let skin = Skin::of(ui);
     let total = live.sys.total_memory();
     let used = live.sys.used_memory();
     let frac = if total == 0 { 0.0 } else { used as f32 / total as f32 };
-    card_head(ui, i18n::t(lang, Key::SysMemory), &format!("· {:.0}%", frac * 100.0), skin.accent);
+    card_head(ui, tr("Memory"), &format!("· {:.0}%", frac * 100.0), skin.accent);
     ui.add_space(8.0);
     // Sem arquivo de paginação o swap é 0/0: mostra "0 B / 0 B" (não é erro).
     let total_swap = live.sys.total_swap();
@@ -600,7 +600,7 @@ fn memory_card(ui: &mut egui::Ui, lang: Lang, live: &Live, inner_h: f32) {
     };
     let swap = |ui: &mut egui::Ui| {
         let value = format!("{} / {}", format_bytes(used_swap), format_bytes(total_swap));
-        meter_row(ui, i18n::t(lang, Key::SysSwap), &value, swap_frac, skin.muted);
+        meter_row(ui, tr("Swap"), &value, swap_frac, skin.muted);
     };
     // O que sobra depois do cabeçalho vira duas metades iguais: o medidor fica
     // no topo de cada uma (distribuídos, não empilhados no canto de cima). O
@@ -622,10 +622,10 @@ fn memory_card(ui: &mut egui::Ui, lang: Lang, live: &Live, inner_h: f32) {
 }
 
 /// Card dos discos: um bloco por volume (nome · tipo, uso e barra).
-fn disks_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
+fn disks_card(ui: &mut egui::Ui, live: &Live) {
     let skin = Skin::of(ui);
     let mut any = false;
-    card_head(ui, i18n::t(lang, Key::SysDisks), "", skin.text);
+    card_head(ui, tr("Disks"), "", skin.text);
     ui.add_space(8.0);
     if let Some(disks) = live.disks.as_ref() {
         for disk in disks {
@@ -635,7 +635,7 @@ fn disks_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
             }
             any = true;
             let used = total.saturating_sub(disk.available_space());
-            let kind = disk_kind_label(disk.kind()).unwrap_or_else(|| i18n::t(lang, Key::SysUnknown));
+            let kind = disk_kind_label(disk.kind()).unwrap_or_else(|| tr("unknown"));
             let name = format!("{} · {kind}", disk.mount_point().display());
             let value = format!("{} / {}", format_bytes(used), format_bytes(total));
             meter_row(ui, &name, &value, used as f32 / total as f32, skin.accent);
@@ -643,16 +643,16 @@ fn disks_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
         }
     }
     if !any {
-        ui.label(egui::RichText::new(i18n::t(lang, Key::SysUnavailable)).small().color(skin.muted));
+        ui.label(egui::RichText::new(tr("unavailable")).small().color(skin.muted));
     }
 }
 
 /// Card da rede: taxa total no cabeçalho, sparkline do download e as
 /// interfaces (nome truncado, com o nome inteiro no tooltip).
-fn network_card(ui: &mut egui::Ui, lang: Lang, live: &Live) {
+fn network_card(ui: &mut egui::Ui, live: &Live) {
     let skin = Skin::of(ui);
     let (down, up) = net_deltas(live.nets.as_ref());
-    card_head(ui, i18n::t(lang, Key::SysNetwork), &format!("↓ {} · ↑ {}", format_rate(down as u64), format_rate(up as u64)), skin.accent);
+    card_head(ui, tr("Network"), &format!("↓ {} · ↑ {}", format_rate(down as u64), format_rate(up as u64)), skin.accent);
     ui.add_space(6.0);
     sparkline(ui, &live.down_hist, 0.0, skin.accent, SPARK_H_NET);
     ui.add_space(8.0);
@@ -687,40 +687,40 @@ fn adapter_row(ui: &mut egui::Ui, name: &str, down: u64, up: u64, skin: Skin) {
 
 /// Card "Energia & sistema": bateria como pill (SEM barra), uptime e
 /// temperaturas. As zonas térmicas detalhadas ficam no tooltip.
-fn energy_card(ui: &mut egui::Ui, lang: Lang, live: &Live, average: Option<f32>, max: Option<f32>, last: Option<f32>) {
+fn energy_card(ui: &mut egui::Ui, live: &Live, average: Option<f32>, max: Option<f32>, last: Option<f32>) {
     let skin = Skin::of(ui);
-    card_head(ui, i18n::t(lang, Key::SysEnergy), "", skin.text);
+    card_head(ui, tr("Energy & system"), "", skin.text);
     ui.add_space(8.0);
     ui.horizontal_wrapped(|ui| {
         match battery() {
             Some(info) => {
                 let state_key = if info.charging {
-                    Key::SysCharging
+                    tr("charging")
                 } else if info.plugged {
-                    Key::SysPlugged
+                    tr("plugged in")
                 } else {
-                    Key::SysOnBattery
+                    tr("on battery")
                 };
                 // Bateria fraca fora da tomada é o único caso de alerta.
                 let ink = if info.percent <= 20 && !info.plugged { skin.danger } else { skin.accent };
-                kit::badge(ui, &format!("⚡ {}% · {}", info.percent, i18n::t(lang, state_key)), ink);
+                kit::badge(ui, &format!("⚡ {}% · {}", info.percent, state_key), ink);
             }
             None => {
-                kit::badge(ui, i18n::t(lang, Key::SysNoBattery), skin.muted);
+                kit::badge(ui, tr("no battery"), skin.muted);
             }
         }
         ui.add_space(16.0);
-        ui.label(egui::RichText::new(i18n::t(lang, Key::SysUptime)).small().color(skin.muted));
-        let uptime = System::uptime().map(format_uptime).unwrap_or_else(|_| i18n::t(lang, Key::SysUnavailable).to_string());
+        ui.label(egui::RichText::new(tr("Uptime")).small().color(skin.muted));
+        let uptime = System::uptime().map(format_uptime).unwrap_or_else(|_| tr("unavailable").to_string());
         ui.label(egui::RichText::new(uptime).small());
         ui.add_space(16.0);
-        ui.label(egui::RichText::new(i18n::t(lang, Key::SysTemperatures)).small().color(skin.muted));
+        ui.label(egui::RichText::new(tr("Temperatures")).small().color(skin.muted));
         // Se o WMI parar de responder depois de ter funcionado, a última
         // leitura da sessão continua na tela em vez de "indisponível".
         let current = live.comps.as_ref().and_then(hottest).or(last);
         let text = match current {
             Some(value) => format!("{value:.0} °C"),
-            None => i18n::t(lang, Key::SysUnavailable).to_string(),
+            None => tr("unavailable").to_string(),
         };
         let resp = ui.label(egui::RichText::new(text).small());
         let mut detail = String::new();
@@ -733,16 +733,16 @@ fn energy_card(ui: &mut egui::Ui, lang: Lang, live: &Live, average: Option<f32>,
         }
         let average = average.map_or_else(|| "—".to_string(), |value| format!("{value:.0} °C"));
         let maximum = max.map_or_else(|| "—".to_string(), |value| format!("{value:.0} °C"));
-        detail.push_str(&format!("{}: {average}   {}: {maximum}", i18n::t(lang, Key::SysAvg), i18n::t(lang, Key::SysMax)));
+        detail.push_str(&format!("{}: {average}   {}: {maximum}", tr("avg"), tr("max")));
         resp.on_hover_text(detail);
     });
 }
 
 /// Card dos top processos, no padrão da aba Clipboard: nome com tooltip,
 /// CPU/RAM como badges, × só no hover e hairline entre as linhas.
-fn processes_card(ui: &mut egui::Ui, lang: Lang, live: &Live, sort: SortBy, sort_choice: &mut Option<SortBy>, kill: &mut Option<(u32, String)>) {
+fn processes_card(ui: &mut egui::Ui, live: &Live, sort: SortBy, sort_choice: &mut Option<SortBy>, kill: &mut Option<(u32, String)>) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(i18n::t(lang, Key::SysProcesses)).strong());
+        ui.label(egui::RichText::new(tr("Top processes")).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if kit::segmented(ui, "RAM", sort == SortBy::Mem).clicked() {
                 *sort_choice = Some(SortBy::Mem);
@@ -755,13 +755,13 @@ fn processes_card(ui: &mut egui::Ui, lang: Lang, live: &Live, sort: SortBy, sort
     ui.add_space(6.0);
     kit::hairline(ui);
     for row in &live.procs {
-        process_row(ui, lang, row, kill);
+        process_row(ui, row, kill);
         kit::hairline(ui);
     }
 }
 
 /// Uma linha da lista de processos.
-fn process_row(ui: &mut egui::Ui, lang: Lang, row: &ProcRow, kill: &mut Option<(u32, String)>) {
+fn process_row(ui: &mut egui::Ui, row: &ProcRow, kill: &mut Option<(u32, String)>) {
     let skin = Skin::of(ui);
     let width = ui.available_width().max(1.0);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, PROC_H), egui::Sense::hover());
@@ -782,7 +782,7 @@ fn process_row(ui: &mut egui::Ui, lang: Lang, row: &ProcRow, kill: &mut Option<(
         // ficava reservado pro modal de confirmação.
         // Sem hover-dependência: o botão bloqueia o hover da linha e "sumia"
         // sob o próprio ponteiro (mesmo bug pago nos alarmes).
-        if kit::ghost_action(ui, "×").on_hover_text(i18n::t(lang, Key::SysKill)).clicked() {
+        if kit::ghost_action(ui, "×").on_hover_text(tr("End process")).clicked() {
             *kill = Some((row.pid, row.name.clone()));
         }
         kit::badge(ui, &format_bytes(row.mem), skin.muted);
@@ -821,7 +821,7 @@ fn sparkline(ui: &mut egui::Ui, hist: &Hist, scale: f32, color: egui::Color32, h
 }
 
 /// Desenha a aba inteira. O refresh NÃO acontece aqui: quem tica é [`SystemState::tick`].
-pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
+pub fn show(ui: &mut egui::Ui, state: &mut SystemState) -> Outcome {
     let mut out = Outcome::default();
     let ctx = ui.ctx().clone();
 
@@ -830,7 +830,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
     let Some(live) = state.live.as_ref() else {
         let _ = ui.centered_and_justified(|ui| {
             if state.failed {
-                ui.label(egui::RichText::new(i18n::t(lang, Key::SysUnavailable)).weak());
+                ui.label(egui::RichText::new(tr("unavailable")).weak());
             } else {
                 // "…" é símbolo, não texto traduzível.
                 ui.label(egui::RichText::new("…").weak());
@@ -885,13 +885,13 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
             let cpu_h = cpu_card_h(ui, inner_w, cores.len());
             let mem_inner_h = if two_cols { kit::card_inner_height(cpu_h) } else { 0.0 };
 
-            card_pair(ui, two_cols, card_w, cpu_h, |ui| cpu_card(ui, lang, live, &cores, grid), |ui| memory_card(ui, lang, live, mem_inner_h));
+            card_pair(ui, two_cols, card_w, cpu_h, |ui| cpu_card(ui, live, &cores, grid), |ui| memory_card(ui, live, mem_inner_h));
             ui.add_space(GUTTER);
-            card_pair(ui, two_cols, card_w, 210.0, |ui| disks_card(ui, lang, live), |ui| network_card(ui, lang, live));
+            card_pair(ui, two_cols, card_w, 210.0, |ui| disks_card(ui, live), |ui| network_card(ui, live));
             ui.add_space(GUTTER);
-            kit::card(ui, col_w, |ui| energy_card(ui, lang, live, temps_average, temps_max, temps_last));
+            kit::card(ui, col_w, |ui| energy_card(ui, live, temps_average, temps_max, temps_last));
             ui.add_space(GUTTER);
-            kit::card(ui, col_w, |ui| processes_card(ui, lang, live, sort, &mut sort_choice, &mut kill_request));
+            kit::card(ui, col_w, |ui| processes_card(ui, live, sort, &mut sort_choice, &mut kill_request));
         });
     });
 
@@ -919,7 +919,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
     if let Some(confirm) = state.confirm.take() {
         let mut close = false;
         let mut do_kill = false;
-        egui::Window::new(i18n::t(lang, Key::SysKill))
+        egui::Window::new(tr("End process"))
             .id(egui::Id::unique("system-kill"))
             .frame(kit::modal_frame(&ctx))
             .collapsible(false)
@@ -929,21 +929,21 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, state: &mut SystemState) -> Outcome {
             .show(&ctx, |ui| {
                 ui.set_width(380.0);
                 let pid = confirm.pid.to_string();
-                let question = i18n::t(lang, Key::SysKillConfirm).replace("{name}", &confirm.name).replace("{pid}", &pid);
+                let question = tr("End {name} (PID {pid})?").replace("{name}", &confirm.name).replace("{pid}", &pid);
                 ui.label(question);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if kit::pill_danger(ui, i18n::t(lang, Key::SysKill)).clicked() {
+                    if kit::pill_danger(ui, tr("End process")).clicked() {
                         do_kill = true;
                     }
-                    if kit::pill(ui, i18n::t(lang, Key::Cancel), false).clicked() {
+                    if kit::pill(ui, tr("Cancel"), false).clicked() {
                         close = true;
                     }
                 });
             });
         if do_kill {
             let ok = state.kill(confirm.pid);
-            out.status = Some(if ok { i18n::t(lang, Key::SysKilled).to_string() } else { format!("⚠ {}", i18n::t(lang, Key::SysKillFailed)) });
+            out.status = Some(if ok { tr("process ended").to_string() } else { format!("⚠ {}", tr("could not end the process")) });
         } else if !close {
             state.confirm = Some(confirm);
         }

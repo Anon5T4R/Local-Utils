@@ -1,8 +1,8 @@
 //! Local Utils — utilitários do cotidiano 100% locais e offline.
 //! Um binário leve, ancorado pelo gerenciador de clipboard residente na
 //! bandeja; os demais utilitários são abas on-demand (só inicializam quando
-//! abertas). Este scaffold traz o boot, o tema/i18n comuns e o esqueleto das
-//! abas — o conteúdo de cada uma entra na sua versão do roadmap.
+//! abertas: Clipboard, Captura de tela, Sistema, Ferramentas, Notas, Cor e
+//! Converter). Idioma e tema são do próprio app (`i18n`, `prefs`, `theme`).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -15,14 +15,17 @@ mod clipboard_ui;
 mod convert;
 mod history;
 mod hotkey;
+mod i18n;
 mod ocr;
 mod options;
 mod paste;
 mod picker;
 mod pickers;
 mod popup;
+mod prefs;
 mod shot_editor;
 mod system;
+mod theme;
 mod tools;
 mod tools_calc;
 mod tools_clock;
@@ -32,13 +35,12 @@ mod tools_units;
 mod transfer;
 mod tray;
 mod ui;
+mod workarea;
 
 #[cfg(windows)]
 mod winctl;
 
 use eframe::egui;
-use utils_ui::config;
-use utils_ui::theme;
 
 /// Ícone da janela (além do .exe cunhado no build.rs — Windows pega os
 /// dois; AppImage/desktop só vendo com o PNG do pacote). Também é o ícone da
@@ -69,7 +71,7 @@ fn main() -> eframe::Result<()> {
     // instância (e segunda bandeja) em vez de acordar a que já existe.
     #[cfg(windows)]
     {
-        let dir = config::config_dir(app::APP_ID);
+        let dir = prefs::config_dir(app::APP_ID);
         let _ = std::fs::create_dir_all(&dir);
         let lock = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(dir.join("instance.lock"));
         let segunda = match &lock {
@@ -87,7 +89,7 @@ fn main() -> eframe::Result<()> {
         }
     }
 
-    let cfg = config::load(app::APP_ID);
+    let cfg = prefs::load(app::APP_ID);
 
     let mut viewport = egui::ViewportBuilder::default().with_title("Local Utils").with_inner_size([980.0, 680.0]);
     // Soltar arquivos na janela (aba Converter): o winit já liga por padrão no
@@ -104,7 +106,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             // O carregador de SVG dos ícones da suíte (craft-icons).
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            theme::apply(&cc.egui_ctx, cfg.theme);
+            theme::apply(&cc.egui_ctx, cfg.mode());
             // Linux: a escolha clara/escura do desktop, que o winit não informa.
             craft_desktop_theme::follow(&cc.egui_ctx);
             let mut utils = app::UtilsApp::new(cfg);

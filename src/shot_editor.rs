@@ -21,7 +21,7 @@ use std::path::Path;
 
 use eframe::egui;
 use image::{imageops, RgbaImage};
-use utils_ui::i18n::{self, Key, Lang};
+use crate::i18n::tr;
 
 // `ascent`, `h_advance`, `glyph_id` e `outline_glyph` são métodos de TRAIT.
 use ab_glyph::{Font, ScaleFont};
@@ -340,15 +340,15 @@ pub enum Tool {
 }
 
 impl Tool {
-    fn label(self) -> Key {
+    fn label(self) -> &'static str {
         match self {
-            Tool::Select => Key::ToolSelect,
-            Tool::Rect => Key::ToolRect,
-            Tool::Arrow => Key::ToolArrow,
-            Tool::Text => Key::ToolText,
-            Tool::Pixelate => Key::ToolPixelate,
-            Tool::Blur => Key::ToolBlur,
-            Tool::Crop => Key::ToolCrop,
+            Tool::Select => tr("Select"),
+            Tool::Rect => tr("Rectangle"),
+            Tool::Arrow => tr("Arrow"),
+            Tool::Text => tr("Text"),
+            Tool::Pixelate => tr("Pixelate"),
+            Tool::Blur => tr("Blur"),
+            Tool::Crop => tr("Crop"),
         }
     }
 
@@ -448,10 +448,10 @@ pub struct Outcome {
 }
 
 /// Desenha a aba. Sem captura pendente, mostra a dica do atalho.
-pub fn show(ui: &mut egui::Ui, lang: Lang, hotkey: &str, shot: Option<&mut Shot>) -> Outcome {
+pub fn show(ui: &mut egui::Ui, hotkey: &str, shot: Option<&mut Shot>) -> Outcome {
     let mut out = Outcome::default();
     let Some(shot) = shot else {
-        let hint = i18n::t(lang, Key::CaptureHint).replace("{hotkey}", &crate::options::pretty_hotkey(hotkey));
+        let hint = tr("Press {hotkey} to capture").replace("{hotkey}", &crate::options::pretty_hotkey(hotkey));
         let _ = ui.centered_and_justified(|ui| {
             ui.label(egui::RichText::new(hint).weak());
         });
@@ -480,7 +480,7 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, hotkey: &str, shot: Option<&mut Shot>
         }
     }
 
-    toolbar(ui, lang, shot, &mut out);
+    toolbar(ui, shot, &mut out);
     // Descartou: nada de canvas neste frame — o app limpa a captura no fim do
     // frame e a aba já desenha o empty-state no seguinte.
     if out.discard {
@@ -502,11 +502,10 @@ pub fn show(ui: &mut egui::Ui, lang: Lang, hotkey: &str, shot: Option<&mut Shot>
 }
 
 /// Barra de ferramentas: ferramentas, cor, espessura, texto e ações.
-fn toolbar(ui: &mut egui::Ui, lang: Lang, shot: &mut Shot, out: &mut Outcome) {
-    let t = |key: Key| i18n::t(lang, key);
+fn toolbar(ui: &mut egui::Ui, shot: &mut Shot, out: &mut Outcome) {
     ui.horizontal_wrapped(|ui| {
         for tool in Tool::ALL {
-            ui.selectable_value(&mut shot.tool, tool, t(tool.label()));
+            ui.selectable_value(&mut shot.tool, tool, tool.label());
         }
         ui.separator();
 
@@ -515,49 +514,49 @@ fn toolbar(ui: &mut egui::Ui, lang: Lang, shot: &mut Shot, out: &mut Outcome) {
                 shot.cor = cor;
             }
         }
-        egui::color_picker::color_edit_button_srgba(ui, &mut shot.cor, egui::color_picker::Alpha::Opaque).on_hover_text(t(Key::Color));
+        egui::color_picker::color_edit_button_srgba(ui, &mut shot.cor, egui::color_picker::Alpha::Opaque).on_hover_text(tr("Color"));
 
         ui.separator();
-        ui.label(t(Key::Thickness));
+        ui.label(tr("Thickness"));
         ui.add(egui::DragValue::new(&mut shot.espessura).range(1.0..=24.0).speed(0.2));
         if matches!(shot.tool, Tool::Pixelate | Tool::Blur) {
-            ui.label(t(Key::Strength));
+            ui.label(tr("Strength"));
             ui.add(egui::DragValue::new(&mut shot.forca).range(1..=48));
         }
         if shot.tool == Tool::Text {
             ui.add(egui::DragValue::new(&mut shot.tam).range(8.0..=200.0).suffix(" px"));
-            ui.add(kit::line(&mut shot.texto).hint_text(t(Key::ShotText)).desired_width(160.0));
+            ui.add(kit::line(&mut shot.texto).hint_text(tr("Text to insert")).desired_width(160.0));
         }
 
         ui.separator();
-        let undo = ui.add_enabled_ui(shot.edits.can_undo(), |ui| kit::pill(ui, t(Key::Undo), false)).inner;
+        let undo = ui.add_enabled_ui(shot.edits.can_undo(), |ui| kit::pill(ui, tr("Undo"), false)).inner;
         if undo.clicked() && shot.edits.undo() {
             shot.selected = None;
             shot.moving = None;
             shot.dirty = true;
         }
-        if kit::pill(ui, t(Key::ClearAnnotations), false).clicked() {
+        if kit::pill(ui, tr("Clear annotations"), false).clicked() {
             shot.edits.clear();
             shot.selected = None;
             shot.moving = None;
             shot.dirty = true;
         }
-        if shot.edits.crop().is_some() && kit::pill(ui, t(Key::CropReset), false).clicked() {
+        if shot.edits.crop().is_some() && kit::pill(ui, tr("Reset crop"), false).clicked() {
             shot.edits.set_crop(None);
             shot.dirty = true;
         }
         ui.separator();
-        if kit::pill(ui, t(Key::CopyShot), false).clicked() {
-            out.status = Some(copy_to_clipboard(shot, lang));
+        if kit::pill(ui, tr("Copy image"), false).clicked() {
+            out.status = Some(copy_to_clipboard(shot));
         }
-        if kit::pill(ui, t(Key::SaveShot), true).clicked() {
+        if kit::pill(ui, tr("Save as PNG"), true).clicked() {
             // Seletor nativo assíncrono (`src/pickers.rs`): o app abre o
             // "Salvar como" e grava na continuação.
             out.save = true;
         }
         // Descartar: ação BARATA (capturar de novo é um atalho), então sem
         // modal — ghost discreto na tinta do tema, nunca vermelho.
-        if kit::ghost_action(ui, t(Key::ShotDiscard)).clicked() {
+        if kit::ghost_action(ui, tr("Discard capture")).clicked() {
             out.discard = true;
         }
     });
@@ -870,11 +869,11 @@ fn commit(shot: &mut Shot, a: Pt, b: Pt) {
 
 /// Copia o resultado pro clipboard como entrada de imagem (espelho do botão
 /// "recopiar" da aba Clipboard — é o caminho mais barato de copiar imagem).
-fn copy_to_clipboard(shot: &Shot, lang: Lang) -> String {
+fn copy_to_clipboard(shot: &Shot) -> String {
     let img = render(&shot.base, shot.edits.crop(), shot.edits.annotations());
     let (w, h) = img.dimensions();
     let Some(png) = history::encode_png(img.as_raw(), w, h) else {
-        return format!("⚠ {}", i18n::t(lang, Key::CopyFailed));
+        return format!("⚠ {}", tr("Could not copy"));
     };
     let entry = Entry {
         id: history::new_id(),
@@ -887,8 +886,8 @@ fn copy_to_clipboard(shot: &Shot, lang: Lang) -> String {
         image_png: Some(png),
     };
     match clipboard::write_back(&entry) {
-        Ok(()) => i18n::t(lang, Key::CopiedOk).to_string(),
-        Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::CopyFailed)),
+        Ok(()) => tr("Copied ✓").to_string(),
+        Err(e) => format!("⚠ {}: {e}", tr("Could not copy")),
     }
 }
 
@@ -900,12 +899,12 @@ pub(crate) fn save_dialog() -> rfd::AsyncFileDialog {
 
 /// Renderiza o resultado (recorte + anotações) e grava o PNG no caminho
 /// escolhido. Devolve a mensagem pronta pro rodapé.
-pub(crate) fn save_to(shot: &Shot, path: &Path, lang: Lang) -> String {
+pub(crate) fn save_to(shot: &Shot, path: &Path) -> String {
     let img = render(&shot.base, shot.edits.crop(), shot.edits.annotations());
     let (w, h) = img.dimensions();
     match image::save_buffer(path, img.as_raw(), w, h, image::ExtendedColorType::Rgba8) {
-        Ok(()) => i18n::t(lang, Key::ShotSaved).to_string(),
-        Err(e) => format!("⚠ {}: {e}", i18n::t(lang, Key::ShotSaveFailed)),
+        Ok(()) => tr("screenshot saved").to_string(),
+        Err(e) => format!("⚠ {}: {e}", tr("Could not save the screenshot")),
     }
 }
 

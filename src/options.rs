@@ -12,8 +12,8 @@
 //! sendo esse formato; a tela mostra a versão legível ao lado.
 
 use eframe::egui;
-use utils_ui::config::{Config, DEFAULT_HOTKEY};
-use utils_ui::i18n::{self, Key, Lang};
+use crate::prefs::{Prefs, DEFAULT_HOTKEY};
+use crate::i18n::tr;
 
 use crate::hotkey;
 use crate::ui as kit;
@@ -112,7 +112,7 @@ pub struct Outcome {
 
 impl OptionsState {
     /// Abre o diálogo com os rascunhos semeados do config atual.
-    pub fn open(&mut self, cfg: &Config) {
+    pub fn open(&mut self, cfg: &Prefs) {
         self.open = true;
         self.hotkey = cfg.hotkey.clone();
         self.exclude = cfg.exclude.clone();
@@ -156,7 +156,6 @@ impl OptionsState {
 /// (versão, repositório, atualizações) no fim do corpo: são das Configurações da suíte e moram em `shell.rs`.
 pub fn show(
     ctx: &egui::Context,
-    lang: Lang,
     state: &mut OptionsState,
     general: impl FnOnce(&mut egui::Ui),
     about: impl FnOnce(&mut egui::Ui),
@@ -166,7 +165,6 @@ pub fn show(
         return out;
     }
     let windows = cfg!(windows);
-    let t = |key: Key| i18n::t(lang, key);
     let mut save = false;
     let mut close = false;
 
@@ -175,9 +173,9 @@ pub fn show(
         // Cabe na janela estreita: a moldura do diálogo come 40 px e a borda 16.
         ui.set_width(520.0_f32.min(ctx.viewport_rect().width() - 56.0));
         ui.horizontal(|ui| {
-            ui.heading(t(Key::Options));
+            ui.heading(tr("Settings"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if craft_icons::ui::close_button(ui, t(Key::Close)).clicked() {
+                if craft_icons::ui::close_button(ui, tr("Close")).clicked() {
                     close = true;
                 }
             });
@@ -193,14 +191,14 @@ pub fn show(
 
             // ── autostart (vale na hora) ──────────────────────────────────
             let mut autostart = state.autostart;
-            let check = ui.add_enabled(windows, egui::Checkbox::new(&mut autostart, t(Key::Autostart)));
+            let check = ui.add_enabled(windows, egui::Checkbox::new(&mut autostart, tr("Start with Windows")));
             if windows {
                 if check.changed() {
                     state.autostart = autostart;
                     out.autostart = Some(autostart);
                 }
             } else {
-                check.on_hover_text(t(Key::WindowsOnly));
+                check.on_hover_text(tr("Available on Windows only"));
             }
             ui.add_space(10.0);
 
@@ -208,7 +206,7 @@ pub fn show(
             // Quem prefere a janela inteira no atalho desmarca aqui: o popup só
             // troca o que o atalho abre, nada mais do app muda.
             let mut popup_mode = state.popup_mode;
-            if ui.checkbox(&mut popup_mode, t(Key::TogglePopupMode)).changed() {
+            if ui.checkbox(&mut popup_mode, tr("Open a quick popup at the cursor")).changed() {
                 state.popup_mode = popup_mode;
                 out.popup_mode = Some(popup_mode);
             }
@@ -217,19 +215,19 @@ pub fn show(
             // ── som do alarme (vale no próximo toque) ────────────────────
             // O caminho do `.wav` fica no config e viaja com ele; o "Testar" toca
             // UMA vez pra ouvir antes de confiar no alarme.
-            ui.label(egui::RichText::new(t(Key::OptionsAlarmSound)).strong());
+            ui.label(egui::RichText::new(tr("Alarm sound")).strong());
             ui.horizontal(|ui| {
-                ui.add(kit::line(&mut state.alarm_sound).hint_text(t(Key::OptionsAlarmSoundHint)).desired_width(360.0));
-                let test = ui.add_enabled_ui(windows, |ui| kit::pill(ui, t(Key::OptionsTest), false)).inner;
+                ui.add(kit::line(&mut state.alarm_sound).hint_text(tr("Path to a .wav file")).desired_width(360.0));
+                let test = ui.add_enabled_ui(windows, |ui| kit::pill(ui, tr("Test"), false)).inner;
                 if test.clicked() {
                     crate::alarm_sound::preview(&state.alarm_sound);
                 }
                 if !windows {
-                    test.on_hover_text(t(Key::WindowsOnly));
+                    test.on_hover_text(tr("Available on Windows only"));
                 }
             });
             if !windows {
-                ui.label(egui::RichText::new(t(Key::WindowsOnly)).small().weak());
+                ui.label(egui::RichText::new(tr("Available on Windows only")).small().weak());
             }
             ui.add_space(12.0);
             ui.separator();
@@ -237,7 +235,7 @@ pub fn show(
 
             // ── atalho global (vale no próximo arranque) ──────────────────
             ui.horizontal(|ui| {
-                ui.label(t(Key::HotkeyGlobal));
+                ui.label(tr("Global hotkey"));
                 // Captura ANTES do campo: o `TextEdit` com foco consome as teclas
                 // do frame, e a leitura das teclas tem que acontecer primeiro.
                 if state.capturing {
@@ -246,14 +244,14 @@ pub fn show(
                 // Campo read-only de verdade: o valor só muda pela captura. O
                 // buffer é DESCARTÁVEL (recriado a cada frame), então o que o
                 // usuário digitar nele não mexe no rascunho.
-                let mut shown = if state.capturing { t(Key::PressKeysHint).to_string() } else { state.hotkey.clone() };
+                let mut shown = if state.capturing { tr("Press the new shortcut… (Esc cancels)").to_string() } else { state.hotkey.clone() };
                 let field = ui.add_enabled(windows, kit::line(&mut shown).hint_text(DEFAULT_HOTKEY).desired_width(200.0));
                 if state.capturing && !field.has_focus() {
                     // Foco é o que dá "no campo" à captura (o egui entrega as
                     // teclas pelo `Context`, não pelo widget).
                     field.request_focus();
                 }
-                let label = if state.capturing { t(Key::Cancel) } else { t(Key::RegisterHotkey) };
+                let label = if state.capturing { tr("Cancel") } else { tr("Register shortcut") };
                 let button = ui.add_enabled_ui(windows, |ui| kit::pill(ui, label, false)).inner;
                 if button.clicked() {
                     state.capturing = !state.capturing;
@@ -262,7 +260,7 @@ pub fn show(
                 // O atalho atual em texto legível, ao lado do campo.
                 ui.label(egui::RichText::new(pretty_hotkey(&state.hotkey)).small().weak());
                 if !state.capturing {
-                    button.on_hover_text(t(if windows { Key::RestartApplies } else { Key::WindowsOnly }));
+                    button.on_hover_text(if windows { tr("Applies after restarting the app") } else { tr("Available on Windows only") });
                 }
             });
             ui.add_space(12.0);
@@ -270,15 +268,15 @@ pub fn show(
             ui.add_space(8.0);
 
             // ── apps sensíveis (vale no próximo arranque) ─────────────────
-            ui.label(egui::RichText::new(t(Key::ExcludeApps)).strong());
-            ui.label(egui::RichText::new(t(Key::RestartApplies)).small().weak());
+            ui.label(egui::RichText::new(tr("Sensitive apps")).strong());
+            ui.label(egui::RichText::new(tr("Applies after restarting the app")).small().weak());
             ui.add_space(6.0);
             let mut remove: Option<usize> = None;
             egui::ScrollArea::vertical().id_salt("utils-options-exclude").max_height(150.0).show(ui, |ui| {
                 for (i, app) in state.exclude.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
                         ui.add(kit::line(app).desired_width(360.0));
-                        if craft_icons::ui::button(ui, craft_icons::Icon::Delete, t(Key::Remove)).clicked() {
+                        if craft_icons::ui::button(ui, craft_icons::Icon::Delete, tr("Remove")).clicked() {
                             remove = Some(i);
                         }
                     });
@@ -288,8 +286,8 @@ pub fn show(
                 state.exclude.remove(i);
             }
             ui.horizontal(|ui| {
-                ui.add(kit::line(&mut state.new_exclude).hint_text(t(Key::ExcludeHint)).desired_width(360.0));
-                if kit::pill(ui, t(Key::ExcludeAdd), false).clicked() {
+                ui.add(kit::line(&mut state.new_exclude).hint_text(tr("Executable name (e.g. keepass.exe)")).desired_width(360.0));
+                if kit::pill(ui, tr("Add"), false).clicked() {
                     let name = state.new_exclude.trim().to_ascii_lowercase();
                     if !name.is_empty() && !state.exclude.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
                         state.exclude.push(name);
@@ -305,10 +303,10 @@ pub fn show(
             ui.horizontal(|ui| {
                 // Cross-platform agora: o seletor nativo vem de `src/pickers.rs`
                 // (Windows nativo, Linux via portal XDG).
-                if kit::pill(ui, t(Key::ExportHistory), false).clicked() {
+                if kit::pill(ui, tr("Export"), false).clicked() {
                     out.export = true;
                 }
-                if kit::pill(ui, t(Key::ImportHistory), false).clicked() {
+                if kit::pill(ui, tr("Import"), false).clicked() {
                     out.import = true;
                 }
             });
@@ -323,10 +321,10 @@ pub fn show(
         ui.add_space(14.0);
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if kit::pill(ui, t(Key::Save), true).clicked() {
+                if kit::pill(ui, tr("Save"), true).clicked() {
                     save = true;
                 }
-                if kit::pill(ui, t(Key::Close), false).clicked() {
+                if kit::pill(ui, tr("Close"), false).clicked() {
                     close = true;
                 }
             });

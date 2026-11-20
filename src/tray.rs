@@ -108,7 +108,7 @@ mod imp {
             // A mesma thread consome a flag "mostra-te" da segunda instância
             // (single-instance, ver main): o frame não roda com a janela
             // oculta, então não pode ser o app.
-            let show_flag = utils_ui::config::config_dir(crate::app::APP_ID).join("show.flag");
+            let show_flag = crate::prefs::config_dir(crate::app::APP_ID).join("show.flag");
             loop {
                 match cmd_rx.recv_timeout(std::time::Duration::from_millis(200)) {
                     Ok(cmd) => match cmd {
