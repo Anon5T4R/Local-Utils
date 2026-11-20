@@ -48,7 +48,7 @@ winresource = "0.1"
 eframe = "0.37"
 # `monochrome_emoji_fonts`: embute Noto Emoji + emoji-icon — sem ela os glifos
 # de UI (★ 🗑 ✏ 📋) viram tofu: as fontes default (Hack/Ubuntu) não os têm.
-egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
+egui = { version = "0.37", features = ["default_fonts", "monochrome_emoji_fonts"] }
 image = "0.25"
 utils-ui = { path = "utils-ui" }
 serde = { version = "1", features = ["derive"] }
