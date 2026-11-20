@@ -927,24 +927,21 @@ impl UtilsApp {
         // Nota do check manual (Atualizado ✓ / falha): modal simples com OK.
         if let Some(note) = self.update_note.clone() {
             let mut close = false;
-            egui::Window::new(tr("Check for updates"))
-                .id(egui::Id::unique("update-note"))
-                .frame(crate::ui::modal_frame(ctx))
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .default_width(crate::ui::dialog_width(ctx, 340.0))
-                .show(ctx, |ui| {
-                    ui.set_width(crate::ui::dialog_width(ctx, 340.0));
-                    ui.label(&note);
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if crate::ui::pill(ui, tr("Close"), false).clicked() {
-                            close = true;
-                        }
-                    });
+            // Modal como os outros diálogos do app: título dentro, Esc ou clique fora fecha.
+            let resp = egui::Modal::new(egui::Id::unique("update-note")).frame(crate::ui::modal_frame(ctx)).show(ctx, |ui| {
+                crate::ui::begin_dialog(ui);
+                ui.set_width(crate::ui::dialog_width(ctx, 340.0));
+                ui.heading(tr("Check for updates"));
+                ui.add_space(10.0);
+                ui.add(egui::Label::new(&note).wrap());
+                ui.add_space(12.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if crate::ui::pill(ui, tr("Close"), false).clicked() {
+                        close = true;
+                    }
                 });
-            if close {
+            });
+            if close || resp.should_close() {
                 self.update_note = None;
             }
         }

@@ -927,28 +927,26 @@ pub fn show(ui: &mut egui::Ui, state: &mut SystemState) -> Outcome {
     if let Some(confirm) = state.confirm.take() {
         let mut close = false;
         let mut do_kill = false;
-        egui::Window::new(tr("End process"))
-            .id(egui::Id::unique("system-kill"))
-            .frame(kit::modal_frame(&ctx))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .default_width(kit::dialog_width(&ctx, 380.0))
-            .show(&ctx, |ui| {
-                ui.set_width(kit::dialog_width(&ctx, 380.0));
-                let pid = confirm.pid.to_string();
-                let question = tr("End {name} (PID {pid})?").replace("{name}", &confirm.name).replace("{pid}", &pid);
-                ui.label(question);
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if kit::pill_danger(ui, tr("End process")).clicked() {
-                        do_kill = true;
-                    }
-                    if kit::pill(ui, tr("Cancel"), false).clicked() {
-                        close = true;
-                    }
-                });
+        // Modal como os outros diálogos do app: título dentro, Esc ou clique fora cancela.
+        let resp = egui::Modal::new(egui::Id::unique("system-kill")).frame(kit::modal_frame(&ctx)).show(&ctx, |ui| {
+            kit::begin_dialog(ui);
+            ui.set_width(kit::dialog_width(&ctx, 380.0));
+            ui.heading(tr("End process"));
+            ui.add_space(10.0);
+            let pid = confirm.pid.to_string();
+            let question = tr("End {name} (PID {pid})?").replace("{name}", &confirm.name).replace("{pid}", &pid);
+            ui.add(egui::Label::new(question).wrap());
+            ui.add_space(12.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if kit::pill_danger(ui, tr("End process")).clicked() {
+                    do_kill = true;
+                }
+                if kit::pill(ui, tr("Cancel"), false).clicked() {
+                    close = true;
+                }
             });
+        });
+        close |= resp.should_close();
         if do_kill {
             let ok = state.kill(confirm.pid);
             out.status = Some(if ok { tr("process ended").to_string() } else { format!("⚠ {}", tr("could not end the process")) });
