@@ -132,4 +132,31 @@ mod tests {
         assert_eq!(preference(ThemeMode::Light), egui::ThemePreference::Light);
         assert_eq!(preference(ThemeMode::Dark), egui::ThemePreference::Dark);
     }
+
+    /// Contraste WCAG entre duas cores opacas.
+    fn contrast(a: Color32, b: Color32) -> f32 {
+        fn luminance(c: Color32) -> f32 {
+            let channel = |v: u8| {
+                let v = f32::from(v) / 255.0;
+                if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+            };
+            0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
+        }
+        let (hi, lo) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// O texto do pill primário (sobre o accent CHEIO) e o accent como link/ícone sobre o fundo passam de 4,5:1
+    /// (AA) nos dois temas.
+    #[test]
+    fn the_accent_is_readable_in_both_themes() {
+        for tokens in [Tokens::light(), Tokens::dark()] {
+            let skin = crate::ui::Skin::from_visuals(&visuals(&tokens));
+            assert_eq!(skin.accent, tokens.accent, "o Skin usa o accent cheio");
+            let on_pill = contrast(skin.accent, skin.on_accent);
+            let on_base = contrast(skin.accent, tokens.base);
+            assert!(on_pill >= 4.5, "dark={}: texto sobre o accent {on_pill:.2}:1", tokens.dark);
+            assert!(on_base >= 4.5, "dark={}: accent sobre o fundo {on_base:.2}:1", tokens.dark);
+        }
+    }
 }
