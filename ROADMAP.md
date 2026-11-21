@@ -1,22 +1,17 @@
 # ROADMAP — Local Utils
 
 App desktop leve: um binário com utilitários pequenos, ancorado por um gerenciador
-de clipboard residente na bandeja. Plano completo em `docs/planos/localutils.md`.
+de clipboard residente na bandeja. O que já foi entregue mora nas release notes;
+aqui ficam as ideias, as pendências e as decisões que governam o app.
 
-## Fatias
+## Ideias
 
-| Versão | Entrega |
-| --- | --- |
-| v0.1 | Tray + listener + histórico completo (texto/RTF/HTML/imagens/arquivos) + busca/filtro/pin/retenção + teclado herdado + esconder-ao-copiar + editar snippet + recopiar + QR + exclusão de apps sensíveis (lista editável) + export/import `.lutils` + autostart + hotkey global abrindo a janela principal + settings + MSI/CI/autoupdate |
-| v0.2 | Popup rápido no cursor + colar direto na janela focada (SendInput) + OCR nativo |
-| v0.3 | Screenshot com editor de anotação mínimo |
-| v0.4 | Tools (relógio, calculadora, conversor, dev tools) + scratchpad |
-| v0.5 | Sistema (monitor + temperaturas best-effort) + color picker |
-| v0.6+ | Snippets com placeholders (opcional) |
+- **Snippets** — texto fixo com placeholders (opcional; precisa passar no critério
+  de admissão abaixo).
 
-## Pendências da aba Screenshot (v0.3)
+## Pendências da aba Screenshot
 
-- Histórico de capturas: a v0.3 guarda **só a pendente** — captura nova
+- Histórico de capturas: hoje guarda **só a pendente** — captura nova
   substitui a anterior. Uma lista de shots da sessão (miniaturas + reabrir no
   editor) fica pra depois.
 - Seleção de região multi-DPI: o recorte é exato (mapeamento por razão), mas o
@@ -24,15 +19,18 @@ de clipboard residente na bandeja. Plano completo em `docs/planos/localutils.md`
 - Opções: o atalho de captura (`hotkey_screenshot`) ainda não tem campo no
   diálogo de opções — hoje só pelo `config.json`.
 
-## Abas do esqueleto (v0.0 do scaffold)
+## Decisões
 
-| Aba | Versão de entrada |
-| --- | --- |
-| Clipboard | v0.1 (âncora, padrão ao abrir) |
-| Screenshot | v0.3 |
-| Sistema | v0.5 |
-| Tools | v0.4 |
-| Scratchpad | v0.4 |
+- Binários embutidos no instalador: avaliado e **rejeitado** (João, 2026-11-04) —
+  cada update re-baixaria ~80 MB.
+- Encoder JXL: descartado (licença AGPL) — JXL entra só como origem (`jxl-oxide`).
+- Temperatura: best-effort — hwmon no Linux, WMI (`MSAcpi_ThermalZoneTemperature`)
+  no Windows; o poll da aba Sistema roda só com a aba visível.
+- Fora de escopo: sync embutido, hotkey global no Linux, monitoramento em
+  background.
+- Listener do clipboard: `AddClipboardFormatListener` no Windows (hoje o Linux é
+  stub); projetado: XFixes no X11 e data-control no Wayland.
+- Hotkey global (abrir o clipboard): crate `global-hotkey`, padrão `win+alt+v`.
 
 ## Critério de admissão de utilitário novo
 

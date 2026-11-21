@@ -18,19 +18,19 @@ Asset mais recente nas
 | `local-utils-<versão>-linux-x86_64.AppImage` | Linux, AppImage |
 | `local-utils-<versão>-linux-x86_64.tar.gz` | Linux, portable |
 
-## Módulos
+## Abas
 
-| Versão | Módulo | Papel |
-| --- | --- | --- |
-| v0.1 | Clipboard | A âncora: histórico, busca, pin, retenção, export/import `.lutils` |
-| v0.2 | Clipboard | Popup rápido no cursor + colar direto + OCR nativo |
-| v0.3 | Screenshot | Captura de região com anotação mínima |
-| v0.4 | Tools + Scratchpad | Relógio, calculadora, conversor, dev tools; nota rápida |
-| v0.5 | Sistema + Color picker | Monitor de recursos/processos; conta-gotas de tela |
-| v0.6+ | Snippets | Texto fixo com placeholders (opcional) |
+| Aba | Papel |
+| --- | --- |
+| Clipboard | a âncora: histórico (texto/RTF/HTML/imagens/arquivos), busca, pin, retenção, export/import `.lutils` |
+| Screenshot | captura de região com anotação mínima |
+| Sistema | monitor de recursos/processos; temperaturas best-effort |
+| Ferramentas | relógio, calculadora, unidades, dev tools |
+| Scratchpad | nota rápida |
+| Cor | conta-gotas de tela |
+| Converter | conversão de imagens (PNG/JPEG/WebP; JXL só como origem) |
 
-O detalhamento de cada módulo está no `ROADMAP.md`; o plano completo vive em
-`docs/planos/localutils.md` do repo de notas.
+Snippets (texto fixo com placeholders) ainda é ideia — está no `ROADMAP.md`.
 
 ## Sem dependência externa
 
