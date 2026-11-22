@@ -126,17 +126,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToolsState, texts: &mut History, alar
 
     match state.sub {
         SubTab::Clock => {
-            let clock = tools_clock::show(ui, &mut state.clock, alarms);
+            let clock = scrolling(ui, "clock-scroll", |ui| tools_clock::show(ui, &mut state.clock, alarms));
             out.cfg_changed |= clock.cfg_changed;
             out.status = clock.status.or(out.status);
         }
         SubTab::Calc => {
-            let calc = tools_calc::show(ui, &mut state.calc, texts);
+            let calc = scrolling(ui, "calc-scroll", |ui| tools_calc::show(ui, &mut state.calc, texts));
             out.history_changed |= calc.history_changed;
             out.status = calc.status.or(out.status);
         }
         SubTab::Units => {
-            let units = tools_units::show(ui, &mut state.units, texts);
+            let units = scrolling(ui, "units-scroll", |ui| tools_units::show(ui, &mut state.units, texts));
             out.history_changed |= units.history_changed;
             out.status = units.status.or(out.status);
         }
@@ -147,4 +147,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToolsState, texts: &mut History, alar
         }
     }
     out
+}
+
+/// Os painéis que não rolam por conta própria (o de dev tools tem o scroll dele) entram num
+/// `ScrollArea`: numa janela baixa o corpo rola, em vez de deixar controle fora da tela.
+fn scrolling<T>(ui: &mut egui::Ui, id: &str, body: impl FnOnce(&mut egui::Ui) -> T) -> T {
+    egui::ScrollArea::vertical().id_salt(id).auto_shrink([false, false]).show(ui, body).inner
 }

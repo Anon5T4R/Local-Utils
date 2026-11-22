@@ -18,6 +18,9 @@ use crate::tools::SubTab;
 /// A menor largura que a janela pode ter na prática (o app não fixa mínimo).
 const NARROW: f32 = 340.0;
 
+/// A altura da janela nos testes (o app não fixa mínimo de altura): abas e diálogos têm de caber nela.
+const HEIGHT: f32 = 680.0;
+
 /// Pasta temporária própria do teste (config.json e history.json de teste vão para lá).
 fn scratch(name: &str) -> PathBuf {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
@@ -40,7 +43,7 @@ fn app(name: &str, cfg: Prefs) -> UtilsApp {
 }
 
 fn harness_sized(app: UtilsApp, width: f32) -> Harness<'static, UtilsApp> {
-    Harness::builder().with_size(egui::vec2(width, 680.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+    Harness::builder().with_size(egui::vec2(width, HEIGHT)).with_step_dt(1.0 / 60.0).build_ui_state(
         move |ui, app: &mut UtilsApp| {
             egui_extras::install_image_loaders(ui.ctx());
             crate::i18n::set_language(&app.cfg.language);
@@ -275,16 +278,44 @@ fn loaded(name: &str, prefs: Prefs) -> UtilsApp {
     app
 }
 
-/// Nenhum nó da tela (nem de diálogo) passa da borda de uma janela de `width`.
+/// Nenhum nó da tela (nem de diálogo) passa da borda de uma janela de `width`×[`HEIGHT`].
+///
+/// O corpo de um painel mais alto que a janela rola, com o título e o rodapé fora do
+/// `ScrollArea`. O accesskit anuncia o conteúdo rolado com o rect sem recorte, então o que sai da
+/// janela por baixo só é aceito quando é conteúdo de um corpo que rola: o nó tem de vir ANTES da
+/// última barra de rolagem vertical da árvore (as barras são desenhadas depois do conteúdo, e o
+/// rodapé depois delas) e viver na coluna que a barra rola. O que vier depois da última barra é
+/// casca: essa cabe inteira. Nada pode ficar acima da janela nem passar das laterais.
 fn assert_fits(harness: &Harness<'_, UtilsApp>, width: f32, what: &str) {
-    for node in harness.root().children_recursive() {
+    const TOL: f64 = 0.5;
+    let (w, h) = (f64::from(width), f64::from(HEIGHT));
+    let nodes: Vec<_> = harness.root().children_recursive().collect();
+    let last_bar = nodes.iter().rposition(|node| {
+        let Some(rect) = node.accesskit_node().bounding_box() else { return false };
+        let vertical = rect.y1 - rect.y0 > rect.x1 - rect.x0;
+        node.accesskit_node().role() == Role::ScrollBar && vertical && rect.y0 >= -TOL && rect.y1 <= h + TOL
+    });
+    for (i, node) in nodes.iter().enumerate() {
         let Some(rect) = node.accesskit_node().bounding_box() else { continue };
         let role = node.accesskit_node().role();
         // O texto de um campo é cortado pelo próprio campo (que é conferido): só o campo conta.
-        if rect.width() > 0.0 && role != Role::TextRun {
-            let label = node.accesskit_node().label().unwrap_or_default();
-            assert!(rect.x0 >= -0.5 && rect.x1 <= f64::from(width) + 0.5, "{what}: {role:?} {label:?} fora da janela de {width}: {rect:?}");
+        if rect.width() <= 0.0 || role == Role::TextRun {
+            continue;
         }
+        let label = node.accesskit_node().label().unwrap_or_default();
+        assert!(rect.x0 >= -TOL && rect.x1 <= w + TOL, "{what}: {role:?} {label:?} fora da janela de {width}: {rect:?}");
+        assert!(rect.y0 >= -TOL, "{what}: {role:?} {label:?} acima da janela: {rect:?}");
+        if role == Role::ScrollBar {
+            assert!(rect.y1 <= h + TOL, "{what}: {role:?} {label:?} abaixo da janela de {HEIGHT}: {rect:?}");
+            continue;
+        }
+        if rect.y1 <= h + TOL {
+            continue;
+        }
+        let bar = last_bar.unwrap_or_else(|| panic!("{what}: {role:?} {label:?} abaixo da janela de {HEIGHT}: {rect:?}"));
+        assert!(i < bar, "{what}: {role:?} {label:?} abaixo da janela, depois do rodapé: {rect:?}");
+        let bar = nodes[bar].accesskit_node().bounding_box().expect("a barra tem rect");
+        assert!(rect.x1 <= bar.x1 + TOL, "{what}: {role:?} {label:?} abaixo da janela, fora da coluna que rola: {rect:?}");
     }
 }
 
@@ -355,7 +386,8 @@ fn dialog_setups() -> Vec<(&'static str, Setup)> {
     ]
 }
 
-/// Toda aba cabe na largura mínima, em português e espanhol (os textos mais longos), com conteúdo.
+/// Toda aba cabe na janela mínima do teste (340×[`HEIGHT`]), em português e espanhol (os textos mais
+/// longos), com conteúdo; a aba mais alta rola o corpo.
 #[test]
 fn every_tab_fits_the_narrow_window() {
     for (code, mode) in [("pt-br", ThemeMode::Light), ("es", ThemeMode::Dark)] {
@@ -370,7 +402,8 @@ fn every_tab_fits_the_narrow_window() {
     }
 }
 
-/// Todo diálogo cabe na largura mínima: nenhum controle passa da borda da janela.
+/// Todo diálogo cabe na janela mínima do teste (340×[`HEIGHT`]): nenhum controle passa da borda,
+/// em nenhum dos dois eixos.
 #[test]
 fn every_dialog_fits_the_narrow_window() {
     for (code, mode) in [("pt-br", ThemeMode::Dark), ("es", ThemeMode::Light)] {
