@@ -97,7 +97,7 @@ impl StartupPrompt {
                                 .inner_margin(egui::Margin::symmetric(10, 6))
                                 .show(ui, |ui| {
                                     ui.set_width(ui.available_width());
-                                    ui.label(RichText::new(msg).size(12.0).color(alert_color));
+                                    ui.add(egui::Label::new(RichText::new(msg).size(12.0).color(alert_color)).wrap());
                                 });
                             ui.add_space(4.0);
                         }
@@ -110,7 +110,8 @@ impl StartupPrompt {
                         } else {
                             let desc =
                                 format!("{} {} is available with the latest features and bug fixes.", self.app.name, self.release.version_label());
-                            ui.label(RichText::new(desc).size(12.5).color(text_muted));
+                            // Wraps explicitly: an Area does not, and the long line would widen the card past a narrow window.
+                            ui.add(egui::Label::new(RichText::new(desc).size(12.5).color(text_muted)).wrap());
                         }
 
                         ui.add_space(10.0);
@@ -765,13 +766,16 @@ mod tests {
         let narrow = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(340.0, 480.0));
         frame_in(&ctx, &mut prompt, Vec::new(), narrow);
         let (_, output) = frame_in(&ctx, &mut prompt, Vec::new(), narrow);
-        for (rect, _) in rect_fills(&output) {
-            if rect.width() < 340.0 {
+        // Every painted shape (text, buttons, the X), not just the card: a line that does not wrap widens the
+        // card and pushes the buttons out. The full-window backdrop is the one shape as wide as the window.
+        for clipped in &output.shapes {
+            let rect = clipped.shape.visual_bounding_rect();
+            if rect.is_finite() && rect.width() < 340.0 {
                 assert!(rect.min.x >= 0.0 && rect.max.x <= 340.0, "{rect:?} leaves the 340 pt window");
             }
         }
-        let close = text_pos(&output, "DOWNLOAD").expect("the buttons are painted");
-        assert!(close.x < 340.0);
+        let download = text_pos(&output, "DOWNLOAD").expect("the buttons are painted");
+        assert!(download.x < 340.0);
     }
 
     #[test]
