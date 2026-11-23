@@ -42,6 +42,10 @@ mod winctl;
 
 use eframe::egui;
 
+/// O menor tamanho da janela: a largura e a altura em que `app::ui_tests` mede cada aba e diálogo
+/// (o teste `the_window_cannot_be_resized_below_the_size_the_dialogs_are_measured_at` cobra a relação).
+const MIN_INNER_SIZE: [f32; 2] = [340.0, 680.0];
+
 /// Ícone da janela (além do .exe cunhado no build.rs — Windows pega os
 /// dois; AppImage/desktop só vendo com o PNG do pacote). Também é o ícone da
 /// bandeja (`tray.rs`).
@@ -91,7 +95,7 @@ fn main() -> eframe::Result<()> {
 
     let cfg = prefs::load(app::APP_ID);
 
-    let mut viewport = egui::ViewportBuilder::default().with_title("Local Utils").with_inner_size([980.0, 680.0]);
+    let mut viewport = egui::ViewportBuilder::default().with_title("Local Utils").with_inner_size([980.0, 680.0]).with_min_inner_size(MIN_INNER_SIZE);
     // Soltar arquivos na janela (aba Converter): o winit já liga por padrão no
     // Windows, mas explicitamos — é requisito da aba, não um detalhe do SO.
     viewport = viewport.with_drag_and_drop(true);

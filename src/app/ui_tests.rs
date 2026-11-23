@@ -15,10 +15,11 @@ use super::{Tab, UtilsApp};
 use crate::history::History;
 use crate::tools::SubTab;
 
-/// A menor largura que a janela pode ter na prática (o app não fixa mínimo).
+/// A largura mínima da janela ([`crate::MIN_INNER_SIZE`]): as capturas e os testes de aba e diálogo usam esta
+/// largura, e o `with_min_inner_size` não deixa a janela descer abaixo dela.
 const NARROW: f32 = 340.0;
 
-/// A altura da janela nos testes (o app não fixa mínimo de altura): abas e diálogos têm de caber nela.
+/// A altura do mínimo da janela ([`crate::MIN_INNER_SIZE`]): abas e diálogos têm de caber nela.
 const HEIGHT: f32 = 680.0;
 
 /// Pasta temporária própria do teste (config.json e history.json de teste vão para lá).
@@ -384,6 +385,14 @@ fn dialog_setups() -> Vec<(&'static str, Setup)> {
         }),
         ("update-note", |app| app.update_note = Some("atualizado (0.6.13)".into())),
     ]
+}
+
+/// A janela não desce abaixo do tamanho em que abas e diálogos são medidos: um mínimo menor (ou nenhum)
+/// deixaria a aba cortada, e os testes de encaixe não veriam, porque medem na largura de [`NARROW`].
+#[test]
+fn the_window_cannot_be_resized_below_the_size_the_dialogs_are_measured_at() {
+    let [width, height] = crate::MIN_INNER_SIZE;
+    assert!(width >= NARROW && height >= HEIGHT, "mínimo {width}x{height} é menor que a janela dos testes {NARROW}x{HEIGHT}");
 }
 
 /// Toda aba cabe na janela mínima do teste (340×[`HEIGHT`]), em português e espanhol (os textos mais
