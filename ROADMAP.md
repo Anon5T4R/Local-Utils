@@ -1,40 +1,37 @@
 # ROADMAP — Local Utils
 
-App desktop leve: um binário com utilitários pequenos, ancorado por um gerenciador
-de clipboard residente na bandeja. O que já foi entregue mora nas release notes;
-aqui ficam as ideias, as pendências e as decisões que governam o app.
+A light desktop app: one binary with small utilities, anchored by a clipboard manager that lives in
+the tray. What has been delivered lives in the release notes; here stay the ideas, the open items
+and the decisions that govern the app.
 
-## Ideias
+## Ideas
 
-- **Snippets** — texto fixo com placeholders (opcional; precisa passar no critério
-  de admissão abaixo).
+- **Snippets** — fixed text with placeholders (optional; must pass the admission criterion below).
 
-## Pendências da aba Screenshot
+## Open items for the Screenshot tab
 
-- Histórico de capturas: hoje guarda **só a pendente** — captura nova
-  substitui a anterior. Uma lista de shots da sessão (miniaturas + reabrir no
-  editor) fica pra depois.
-- Seleção de região multi-DPI: o recorte é exato (mapeamento por razão), mas o
-  alinhamento visual do overlay pode sair torto com monitores de DPI diferente.
-- Opções: o atalho de captura (`hotkey_screenshot`) ainda não tem campo no
-  diálogo de opções — hoje só pelo `config.json`.
+- Capture history: today it keeps **only the pending one** — a new capture replaces the previous.
+  A list of the session's shots (thumbnails + reopen in the editor) stays for later.
+- Multi-DPI region selection: the crop is exact (mapping by ratio), but the overlay's visual
+  alignment can come out crooked with monitors of different DPI.
+- Options: the capture shortcut (`hotkey_screenshot`) still has no field in the options dialog —
+  today only through `config.json`.
 
-## Decisões
+## Decisions
 
-- Binários embutidos no instalador: avaliado e **rejeitado** (João, 2026-11-04) —
-  cada update re-baixaria ~80 MB.
-- Encoder JXL: descartado (licença AGPL) — JXL entra só como origem (`jxl-oxide`).
-- Temperatura: best-effort — hwmon no Linux, WMI (`MSAcpi_ThermalZoneTemperature`)
-  no Windows; o poll da aba Sistema roda só com a aba visível.
-- Fora de escopo: sync embutido, hotkey global no Linux, monitoramento em
-  background.
-- Listener do clipboard: `AddClipboardFormatListener` no Windows (hoje o Linux é
-  stub); projetado: XFixes no X11 e data-control no Wayland.
-- Hotkey global (abrir o clipboard): crate `global-hotkey`, padrão `win+alt+v`.
+- Binaries embedded in the installer: evaluated and **rejected** (João, 2026-11-04) — every update
+  would re-download ~80 MB.
+- JXL encoder: discarded (AGPL license) — JXL enters only as a source (`jxl-oxide`).
+- Temperature: best-effort — hwmon on Linux, WMI (`MSAcpi_ThermalZoneTemperature`) on Windows; the
+  System tab's poll runs only with the tab visible.
+- Out of scope: built-in sync, global hotkey on Linux, background monitoring.
+- Clipboard listener: `AddClipboardFormatListener` on Windows (Linux is a stub today); planned:
+  XFixes on X11 and data-control on Wayland.
+- Global hotkey (opening the clipboard): crate `global-hotkey`, default `win+alt+v`.
 
-## Critério de admissão de utilitário novo
+## Admission criterion for a new utility
 
-1. Uso real ≥ 1x/semana.
-2. Sem rede obrigatória.
-3. Não duplica app irmão da suíte.
-4. Abre instantâneo (sem carregar modelo, sem índice, sem setup).
+1. Real use ≥ 1x/week.
+2. No mandatory network.
+3. Does not duplicate a sibling app of the suite.
+4. Opens instantly (no model to load, no index, no setup).
