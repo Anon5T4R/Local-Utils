@@ -5,9 +5,9 @@
 <h1 align="center">Local Utils</h1>
 
 <p align="center">
-  Everyday utilities in one window for Windows and Linux: a clipboard history that lives in the tray, plus a
-  screenshot editor, a system monitor, a clock, a calculator, a unit converter, developer tools, a scratchpad,
-  a colour picker and an image converter. Works offline, needs no account, written in Rust.<br>
+  Everyday utilities in one window for Windows and Linux. On Windows, a clipboard history that lives in the tray
+  and a screenshot editor; on both, a system monitor, a clock, a calculator, a unit converter, developer tools, a
+  scratchpad, a colour picker and an image converter. Works offline, needs no account, written in Rust.<br>
   <a href="https://github.com/Anon5T4R/Local-Utils/releases/latest">Download</a> ·
   <a href="ROADMAP.md">Roadmap and status</a> ·
   <a href="#where-it-comes-from">Where it comes from</a> ·
@@ -49,9 +49,10 @@ only when you open it.
   original and never overwrites a file; a name collision gets ` (1)`, ` (2)`. Metadata is not carried over: the
   conversion starts from the pixels.
 
-The parts that talk to the operating system directly — the clipboard listener, the tray icon, the global
-shortcuts, the screen capture, the eyedropper and the OCR — exist on Windows only. On Linux the same app opens
-the other tabs. What is open or missing is in the [roadmap](ROADMAP.md).
+The parts that talk to the operating system directly exist on Windows only: the clipboard listener, the tray
+icon, the global shortcuts, the screen capture, the eyedropper, the OCR, pasting into the window that had focus
+and the alarm sound. On Linux the same app opens the other tabs, with those pieces missing. What is open or
+missing is in the [roadmap](ROADMAP.md).
 
 ## Formats
 
@@ -68,7 +69,8 @@ the other tabs. What is open or missing is in the [roadmap](ROADMAP.md).
 - **Screenshots** are saved as PNG, at the path you pick.
 - **The converter** reads PNG, JPEG, WebP and JPEG XL. JPEG XL is a source only: there is no encoder in Rust with
   a licence we can ship, so it is never a target.
-- **Settings, the alarms, the scratchpad text and the recent colours** live in `config.json`, next to the history.
+- **Settings (including the global shortcuts and the list of excluded executables), the alarms, the scratchpad
+  text and the recent colours** live in `config.json`, next to the history.
 
 The history is not encrypted: it is a plain JSON file with what you copied. Copies made by the executables
 listed in the settings are not recorded — password managers are in that list by default.
@@ -99,13 +101,14 @@ theme and command palette in the title bar, tabs in the window, one config file.
 
 What is not ours is vendored under `libs/`, and kept as close to its source as the app allows:
 
-- `libs/egui` and `libs/winit` are forks pinned by commit, the same ones every Local app uses.
-- `libs/craft-libs` holds the shared crates — the updater (`craft-update`), the icons, the command palette, the
-  translation catalogs and the desktop theme. They are copies of our `local-libs`, and several of them began as
-  crates of the upstream [craft-libs](https://github.com/storytold/craft-libs) (MIT or Apache-2.0). Our copy of
-  the updater is a deliberate fork: it carries the update paths for our packages (MSI and portable zip on
-  Windows; AppImage, deb/rpm, Arch and tar.gz on Linux), our release asset names and the signing key of the
-  suite.
+- `libs/egui` and `libs/winit` are vendored copies of our forks (egui `6d518fc`, winit `a517b38`), the same ones
+  the suite uses.
+- `libs/craft-libs` holds the shared crates we use — the updater (`craft-update`), the icons, the command palette,
+  the translation catalogs and the desktop theme. The copies come from our `local-libs` and began as crates of the
+  upstream [craft-libs](https://github.com/storytold/craft-libs) (MIT or Apache-2.0), including UI behaviour
+  adapted from the upstream apps, as its [NOTICE](libs/craft-libs/NOTICE) records. Our copy of the updater is a
+  deliberate fork: it carries the update paths for our packages (MSI and portable zip on Windows; AppImage,
+  deb/rpm, Arch and tar.gz on Linux), our release asset names and the signing key of the suite.
 - `libs/rustls-rustcrypto` is a fork of [rustls-rustcrypto](https://github.com/RustCrypto/rustls-rustcrypto)
   (MIT or Apache-2.0) for the updater's TLS. It stays at `0.0.2-alpha` because the upstream version pulls
   `rustls-webpki` 0.102 only for a few algorithm constants; the fork takes them from `rustls-pki-types` instead,
@@ -167,8 +170,9 @@ cargo run --release        # the app
 cargo xtask ci             # all local checks
 ```
 
-A recent stable Rust toolchain is enough. On Linux the build needs the X11 and Wayland development headers; the
-CI workflow lists the packages it installs.
+A recent stable Rust toolchain is enough. On Linux, install the system packages the CI workflow lists
+([.github/workflows/ci.yml](.github/workflows/ci.yml)); the release workflow has its own list
+([release.yml](.github/workflows/release.yml)).
 
 ## Keyboard shortcuts
 
