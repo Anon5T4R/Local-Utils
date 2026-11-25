@@ -118,7 +118,7 @@ impl UtilsApp {
         let about = |ui: &mut egui::Ui| {
             ui.strong(tr("About Local Utils"));
             ui.label(tr_fmt("version {version}", &[("version", env!("CARGO_PKG_VERSION"))]));
-            ui.hyperlink_to("github.com/Anon5T4R/Local-Utils", env!("CARGO_PKG_REPOSITORY"));
+            ui.hyperlink_to("github.com/Styx-Studios/Local-Utils", env!("CARGO_PKG_REPOSITORY"));
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
                 let checking = matches!(status, Status::Checking);

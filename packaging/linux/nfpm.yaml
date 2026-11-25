@@ -14,7 +14,7 @@ section: utils
 priority: optional
 maintainer: ${LOCALUTILS_MAINTAINER}
 vendor: Local Utils contributors
-homepage: https://github.com/Anon5T4R/Local-Utils
+homepage: https://github.com/Styx-Studios/Local-Utils
 license: MIT OR Apache-2.0
 description: |-
   Everyday tools that work 100% locally and offline.

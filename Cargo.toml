@@ -37,7 +37,7 @@ version = "0.7.6"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish.workspace = true
-repository = "https://github.com/Anon5T4R/Local-Utils"
+repository = "https://github.com/Styx-Studios/Local-Utils"
 description = "Utilitários do cotidiano 100% locais e offline — clipboard na bandeja + ferramentas leves"
 
 [build-dependencies]
